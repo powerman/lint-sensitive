@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -97,6 +98,9 @@ func buildBinary(t *testing.T) string {
 
 	dir := repoRoot(t)
 	binary := filepath.Join(t.TempDir(), "lint-sensitive")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+	}
 	cmd := exec.CommandContext(context.Background(), "go", "build", "-o", binary, ".")
 	cmd.Dir = dir
 	cmd.Stderr = os.Stderr
