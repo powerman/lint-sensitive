@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"go/token"
+	"go/types"
 	"reflect"
 	"testing"
 
@@ -167,6 +168,66 @@ func TestInTestFile(t *testing.T) {
 	// A position beyond all files should map to nil File.
 	if inTestFile(pass, token.Pos(0)) {
 		t.Error("pos 0 should not be in any file")
+	}
+}
+
+func TestIsSensitiveNamed(t *testing.T) {
+	t.Parallel()
+
+	pkg := types.NewPackage("example.com/secret", "secret")
+	obj := types.NewTypeName(token.NoPos, pkg, "Data", nil)
+	namedType := types.NewNamed(obj, types.Typ[types.String], nil)
+
+	objOther := types.NewTypeName(
+		token.NoPos,
+		types.NewPackage("example.com/other", "other"),
+		"Other", nil,
+	)
+	otherType := types.NewNamed(objOther, types.Typ[types.String], nil)
+
+	// Predeclared error type from universe scope has nil Obj().Pkg().
+	errorType := types.Universe.Lookup("error").Type()
+
+	tests := []struct {
+		name string
+		m    matcher
+		typ  types.Type
+		want bool
+	}{
+		{
+			name: "nil_pkg",
+			m:    newMatcher(Config{NoDefaultTypes: true}),
+			typ:  errorType,
+			want: false,
+		},
+		{
+			name: "non_matching_package",
+			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret"}}),
+			typ:  otherType,
+			want: false,
+		},
+		{
+			name: "matching_package",
+			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret"}}),
+			typ:  namedType,
+			want: true,
+		},
+		{
+			name: "matching_type_name",
+			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret.Data"}}),
+			typ:  namedType,
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := tt.m.isSensitiveNamed(tt.typ)
+			if got != tt.want {
+				t.Errorf("isSensitiveNamed(%v) = %v, want %v", tt.typ, got, tt.want)
+			}
+		})
 	}
 }
 

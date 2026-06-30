@@ -43,6 +43,16 @@ func testPrintSensitiveSlice() {
 	println(b)
 }
 
+func testFn() {}
+
+func testCallNonBuiltin() {
+	testFn() // No diagnostic: not a builtin function.
+}
+
+func testCallNonPrintBuiltin() {
+	recover() // No diagnostic: recover is a builtin but not print/println.
+}
+
 func testFmtPrint() {
 	var s fakesensitive.String
 	fmt.Print(s) // No diagnostic: fmt.Print uses proper formatting.
