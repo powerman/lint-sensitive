@@ -95,8 +95,7 @@ lint-sensitive -sensitive.no-default-types -sensitive.types=my/custom.Type ./...
 
 ### The `analyzer` package
 
-The linter logic lives in `github.com/powerman/lint-sensitive/analyzer`
-with dependencies limited to `golang.org/x/tools/go/analysis`.
+The linter logic lives in `github.com/powerman/lint-sensitive/analyzer`.
 Use `New(Config)` for library integration:
 
 ```go
@@ -117,18 +116,3 @@ Two analyzers are registered in the `lint-sensitive` binary:
 | ----------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `sensitivefields` | Detects unexported struct fields whose type (transitively) contains sensitive values that leak via `fmt` reflection. |
 | `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                 |
-
-## Example project
-
-The `example/` directory contains a standalone Go module that demonstrates
-both leak channels using every default-supported library
-plus a custom sensitive type declared directly in the module's main package.
-Run the linter over it to verify it catches the expected lines:
-
-```bash
-go run . -sensitive.types=github.com/powerman/lint-sensitive/example.Secret \
-    github.com/powerman/lint-sensitive/example
-```
-
-The `.Secret` suffix restricts detection to only the `Secret` type in that package,
-leaving other types (e.g., `Public`) unmarked — demonstrating type-level granularity.
