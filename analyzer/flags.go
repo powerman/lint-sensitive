@@ -12,8 +12,11 @@ import (
 // errTypesFlagNotRegistered is returned when the -types flag is missing.
 var errTypesFlagNotRegistered = errors.New("-types flag not registered on analyzer")
 
+const trueStr = "true"
+
 // FlagAnalyzer provides shared configuration for all sensitive-check analyzers.
-// It registers a -sensitive.types and -sensitive.no-default-types flags,
+// It registers -sensitive.types, -sensitive.no-default-types,
+// -sensitive.skip-tests, and -sensitive.skip-generated flags,
 // consumed by both sensitivefields and sensitiveprint via Requires.
 //
 //nolint:gochecknoglobals // Required by go/analysis framework.
@@ -44,6 +47,10 @@ func init() { //nolint:gochecknoinits // Required for flag registration.
 			"(optionally with .TypeName suffix to restrict to a specific type)")
 	FlagAnalyzer.Flags.Bool("no-default-types", false,
 		"Do not seed the built-in default sensitive type list")
+	FlagAnalyzer.Flags.Bool("skip-tests", false,
+		"Do not report diagnostics in _test.go files")
+	FlagAnalyzer.Flags.Bool("skip-generated", false,
+		"Do not report diagnostics in generated files (Code generated ... DO NOT EDIT)")
 }
 
 func matcherFromFlag(pass *analysis.Pass) (matcher, error) {
@@ -57,11 +64,21 @@ func runFlag(pass *analysis.Pass) (any, error) {
 	}
 	noDefaults := false
 	if f := pass.Analyzer.Flags.Lookup("no-default-types"); f != nil {
-		noDefaults = f.Value.String() == "true"
+		noDefaults = f.Value.String() == trueStr
+	}
+	skipTests := false
+	if f := pass.Analyzer.Flags.Lookup("skip-tests"); f != nil {
+		skipTests = f.Value.String() == trueStr
+	}
+	skipGenerated := false
+	if f := pass.Analyzer.Flags.Lookup("skip-generated"); f != nil {
+		skipGenerated = f.Value.String() == trueStr
 	}
 	return newMatcher(Config{
 		Types:          splitCSV(typesFlag.Value.String()),
 		NoDefaultTypes: noDefaults,
+		SkipTests:      skipTests,
+		SkipGenerated:  skipGenerated,
 	}), nil
 }
 

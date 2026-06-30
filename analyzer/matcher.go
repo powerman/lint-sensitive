@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"go/ast"
 	"go/token"
 	"go/types"
 	"strings"
@@ -10,9 +11,10 @@ import (
 )
 
 type matcher struct {
-	packages  map[string]bool
-	types     map[packageType]bool
-	skipTests bool
+	packages      map[string]bool
+	types         map[packageType]bool
+	skipTests     bool
+	skipGenerated bool
 }
 
 type packageType struct {
@@ -22,9 +24,10 @@ type packageType struct {
 
 func newMatcher(cfg Config) matcher {
 	m := matcher{
-		packages:  make(map[string]bool),
-		types:     make(map[packageType]bool),
-		skipTests: cfg.SkipTests,
+		packages:      make(map[string]bool),
+		types:         make(map[packageType]bool),
+		skipTests:     cfg.SkipTests,
+		skipGenerated: cfg.SkipGenerated,
 	}
 	if !cfg.NoDefaultTypes {
 		for _, e := range defaultTypes {
@@ -109,6 +112,14 @@ func (m matcher) containsSensitive(t types.Type, visited map[types.Type]bool) bo
 	visited[t] = true
 
 	if m.isSensitiveNamed(t) {
+		// A sensitive named struct that keeps its value behind a double pointer
+		// (sensitive.Boxed[T] = struct{ pp **T }) is unreachable through fmt
+		// reflection, since fmt never follows two pointer levels.
+		// This is the only sensitive named type treated as safe;
+		// every other one leaks and is flagged.
+		if namedStructIsBoxed(t) {
+			return false
+		}
 		return true
 	}
 
@@ -137,14 +148,69 @@ func (m matcher) containsSensitive(t types.Type, visited map[types.Type]bool) bo
 	return false
 }
 
+// namedStructIsBoxed reports whether t is a named struct type that stores a
+// value behind a double pointer (**T), like sensitive.Boxed[T].
+// Such a value is unreachable through fmt reflection, so the type is safe.
+// The double-pointer field may sit anywhere among other fields, in any order;
+// a single such field is enough.
+func namedStructIsBoxed(t types.Type) bool {
+	named, ok := t.(*types.Named)
+	if !ok {
+		return false
+	}
+	st, ok := named.Underlying().(*types.Struct)
+	if !ok {
+		return false
+	}
+	for f := range st.Fields() {
+		if isDoublePointer(f.Type()) {
+			return true
+		}
+	}
+	return false
+}
+
+// isDoublePointer reports whether a type is a pointer-to-pointer (**T or deeper).
+func isDoublePointer(t types.Type) bool {
+	p, ok := types.Unalias(t).(*types.Pointer)
+	if !ok {
+		return false
+	}
+	_, ok = p.Elem().(*types.Pointer)
+	return ok
+}
+
 // shouldCheck reports whether diagnostics should be emitted for the given position.
 // When skipTests is true, positions in _test.go files are skipped.
+// When skipGenerated is true, positions in generated files are skipped.
 func (m matcher) shouldCheck(pass *analysis.Pass, pos token.Pos) bool {
-	return !m.skipTests || !inTestFile(pass, pos)
+	if m.skipTests && inTestFile(pass, pos) {
+		return false
+	}
+	if m.skipGenerated && inGeneratedFile(pass, pos) {
+		return false
+	}
+	return true
 }
 
 // inTestFile reports whether pos falls within a _test.go file.
 func inTestFile(pass *analysis.Pass, pos token.Pos) bool {
 	f := pass.Fset.File(pos)
 	return f != nil && strings.HasSuffix(f.Name(), "_test.go")
+}
+
+// inGeneratedFile reports whether pos falls within a generated file
+// (a file whose first line matches the standard
+// "// Code generated ... DO NOT EDIT." pattern).
+func inGeneratedFile(pass *analysis.Pass, pos token.Pos) bool {
+	f := pass.Fset.File(pos)
+	if f == nil {
+		return false
+	}
+	for _, file := range pass.Files {
+		if pass.Fset.Position(file.Pos()).Filename == f.Name() {
+			return ast.IsGenerated(file)
+		}
+	}
+	return false
 }

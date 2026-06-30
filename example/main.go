@@ -27,6 +27,7 @@ type Public string
 // leakDemo groups all leakable types as unexported fields.
 // Fields 1-5 are sensitive (caught by the linter). Field 6 is NOT sensitive
 // and should NOT be flagged — demonstrating type-level granularity.
+// Field 7 uses [sensitive.Boxed] which is reflection-proof — also NOT flagged.
 // When printed via fmt, all raw values leak because reflection on unexported
 // fields bypasses Stringer/Formatter.
 type leakDemo struct {
@@ -36,6 +37,7 @@ type leakDemo struct {
 	logfusc    logfusc.Secret[string]     // leak:
 	secret     Secret                     // leak:
 	public     Public
+	boxed      powermanSensitive.Boxed[string] // no-leak: **T reflection-proof
 }
 
 func main() {
@@ -47,6 +49,7 @@ func main() {
 		logfusc:    logfusc.NewSecret("value protected by logfusc.Secret"),
 		secret:     "value protected by Secret (declared in main)",
 		public:     "value protected by Public (not sensitive)",
+		boxed:      powermanSensitive.New("value protected by Boxed from fmt reflection"),
 	})
 
 	// Builtin print/println also leak sensitive basic-kind-by-value types.

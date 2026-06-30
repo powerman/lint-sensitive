@@ -93,6 +93,24 @@ To disable the built-in default type list, add `-sensitive.no-default-types`:
 lint-sensitive -sensitive.no-default-types -sensitive.types=my/custom.Type ./...
 ```
 
+Some files produce findings that cannot or should not be fixed:
+
+- **Test files** (`_test.go`) often hold fake fixtures that aren't real secrets.
+  Use `-sensitive.skip-tests` to suppress diagnostics in test files:
+
+  ```bash
+  lint-sensitive -sensitive.skip-tests ./...
+  ```
+
+- **Generated files** (files with a `// Code generated ... DO NOT EDIT.` header)
+  cannot carry structural fixes. Use `-sensitive.skip-generated` to skip them:
+
+  ```bash
+  lint-sensitive -sensitive.skip-generated ./...
+  ```
+
+Both flags default to `false` (diagnostics reported everywhere) and can be combined.
+
 ### The `analyzer` package
 
 The linter logic lives in `github.com/powerman/lint-sensitive/analyzer`.
@@ -116,3 +134,52 @@ Two analyzers are registered in the `lint-sensitive` binary:
 | ----------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `sensitivefields` | Detects unexported struct fields whose type (transitively) contains sensitive values that leak via `fmt` reflection. |
 | `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                 |
+
+## Fixing findings
+
+The linter does not offer a per-line suppression directive by design —
+a `//nolint`-style annotation would silently re-open the leak if debug logging
+is added later. Fix findings with one of the structural remediations below.
+
+### Option A: Export the access path
+
+Make every struct in the chain from the top-level exported type down to the
+secret field exported. This ensures `fmt` honours the sensitive type's own
+`fmt.Formatter`, `Stringer`, or `GoStringer` redaction.
+
+```go
+type Config struct {
+    APIKey sensitive.String // exported — redacted by fmt
+}
+```
+
+> **Caveat**: safe only when the holder is formatted directly.
+> Nested under another unexported struct field the linter recatches it,
+> and nested behind an **interface** in an unexported field it leaks while
+> remaining invisible to static analysis.
+> Good for simple, local cases.
+
+### Option B: Box the secret behind indirection (recommended)
+
+Store the secret in a type whose value is unreachable through `fmt` reflection.
+The [`sensitive.Boxed[T]`](https://github.com/powerman/sensitive) generic type
+holds its value behind a double pointer (`**T`), which `fmt` prints as an
+address and never dereferences.
+
+```go
+import "github.com/powerman/sensitive"
+
+type config struct {
+    apiKey sensitive.Boxed[string] // safe — fmt cannot reach the string
+}
+```
+
+`Boxed` is safe in every nesting scenario — behind unexported fields,
+interfaces, or any other indirection — because `fmt` never follows more than
+one pointer level, and `Boxed` stores the value behind two.
+
+### When neither option applies
+
+- **Generated files** that cannot be edited: use `-sensitive.skip-generated`.
+- **Test fixtures** that hold fake data rather than real secrets:
+  use `-sensitive.skip-tests`.

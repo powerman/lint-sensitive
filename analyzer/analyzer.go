@@ -38,6 +38,10 @@ type Config struct {
 
 	// SkipTests, when true, suppresses diagnostics in _test.go files.
 	SkipTests bool
+
+	// SkipGenerated, when true, suppresses diagnostics in generated files
+	// (those containing the standard "// Code generated ... DO NOT EDIT." header).
+	SkipGenerated bool
 }
 
 // New returns analyzers configured by cfg.

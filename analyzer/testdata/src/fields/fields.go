@@ -105,6 +105,36 @@ type ifaceField struct {
 	v any
 }
 
+// BoxedField tests that a Boxed[T] struct field (double-pointer-backed)
+// is NOT flagged as a leak — fmt reflection cannot reach the value.
+type BoxedField struct {
+	x fakesensitive.Boxed[string] // No diagnostic: Boxed is reflection-proof.
+}
+
+// SinglePtrField tests that a single-pointer wrapper IS flagged —
+// fmt can dereference one pointer level.
+type SinglePtrField struct {
+	x fakesensitive.SinglePtr[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+}
+
+// FuncWrapField tests that a func-field wrapper IS flagged.
+type FuncWrapField struct {
+	x fakesensitive.FuncWrap[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+}
+
+// ChanWrapField tests that a channel-field wrapper IS flagged —
+// no double-pointer field means the struct is not safe.
+type ChanWrapField struct {
+	x fakesensitive.ChanWrap[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+}
+
+// DoublePtrAndOtherField tests that a struct with a double-pointer field
+// AND other fields (int) is NOT flagged — the double-pointer field is
+// assumed to hold the secret.
+type DoublePtrAndOtherField struct {
+	x fakesensitive.DoublePtrAndOther[string] // No diagnostic: has **T field.
+}
+
 // OrderIndependent tests that detection works regardless of field order.
 type orderIndependent struct {
 	First  int
