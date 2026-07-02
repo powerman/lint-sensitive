@@ -51,6 +51,21 @@ func (h Handle[T]) Format(f fmt.State, verb rune) {
 	fmt.Fprint(f, "[redacted]")
 }
 
+// NonCompound is a type constraint that only allows non-compound (basic) types.
+// Used in tests for *TypeParam qualifier detection.
+type NonCompound interface {
+	~string | ~int | ~bool
+}
+
+// CompoundOrPrimitive is a type constraint that includes a compound type.
+// Used in tests for *TypeParam qualifier detection.
+type CompoundOrPrimitive interface {
+	~string | SomeCompound
+}
+
+// SomeCompound is a compound type used in type constraints for tests.
+type SomeCompound struct{ s string }
+
 // Secret is a SecretExposer interface, mirroring github.com/powerman/sensitive.Secret[T]
 // and github.com/negrel/secrecy.SecretExposer[T].
 type Secret[T any] interface {

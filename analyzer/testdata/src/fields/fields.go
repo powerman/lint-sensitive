@@ -186,6 +186,25 @@ type HandleStructField struct {
 	x fakesensitive.Handle[SomeStruct] // want "is reachable behind a"
 }
 
+// HandleGenericNonCompound — Handle[T] where T is constrained to non-compound types.
+// The *T inside Handle is always *<non-compound> → structurallySafe=true.
+// No diagnostic expected even in an unexported field.
+type HandleGenericNonCompound[T fakesensitive.NonCompound] struct {
+	x fakesensitive.Handle[T] // No diagnostic: *TypeParam is non-compound by constraint.
+}
+
+// HandleGenericCompound — Handle[T] where T can be a compound type (SomeStruct).
+// The *T inside Handle could be *<compound> → structurallySafe=false.
+type HandleGenericCompound[T fakesensitive.CompoundOrPrimitive] struct {
+	x fakesensitive.Handle[T] // want "is reachable behind a"
+}
+
+// HandleGenericAny — Handle[T] where T is unconstrained (any).
+// The *T inside Handle can be anything → structurallySafe=false.
+type HandleGenericAny[T any] struct {
+	x fakesensitive.Handle[T] // want "is reachable behind a"
+}
+
 // StarInnerExported — an exported *inner field: the pointer is
 // non-Formatter, so bp=true, disabling interfaces for the subtree.
 // The walk reaches fakesensitive.String inside inner and reports a leak.

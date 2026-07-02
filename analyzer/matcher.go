@@ -282,7 +282,8 @@ func (m matcher) classify(t *types.Named) *typeClass {
 
 // isQualifier reports whether t is one of the structurally-protected kinds:
 // *Pointer, *Interface, Chan, Func, UnsafePointer,
-// or *<non-compound> (*string, *int, *bool, etc.).
+// or *<non-compound> (*string, *int, *bool, etc.),
+// or *TypeParam where the constraint excludes all compound kinds.
 func (matcher) isQualifier(t types.Type) bool {
 	t = types.Unalias(t)
 	switch u := t.(type) {
@@ -301,6 +302,8 @@ func (matcher) isQualifier(t types.Type) bool {
 			return true
 		case *types.Basic: // *<non-compound> (*string, *int, etc.)
 			return true
+		case *types.TypeParam: // *TypeParam: safe iff constraint excludes compound kinds
+			return !typeParamHasCompoundConstraint(e)
 		case *types.Named:
 			// Check if the named type's underlying is a qualifier kind.
 			switch ue := e.Underlying().(type) {
@@ -322,6 +325,68 @@ func (matcher) isQualifier(t types.Type) bool {
 		}
 	default:
 		return false
+	}
+}
+
+// typeParamHasCompoundConstraint reports whether any type-set term in the
+// type parameter's constraint is a compound kind (Struct/Slice/Array/Map).
+// Returns true (conservative: treat as potentially compound) when the
+// constraint is absent, unconstrained (any/interface{}), or method-only.
+func typeParamHasCompoundConstraint(tp *types.TypeParam) bool {
+	constraint := tp.Constraint()
+	if constraint == nil {
+		return true
+	}
+	t := types.Unalias(constraint)
+	if named, ok := t.(*types.Named); ok {
+		t = named.Underlying()
+	}
+	iface, ok := t.(*types.Interface)
+	if !ok {
+		return true
+	}
+	return interfaceHasCompoundTerm(iface)
+}
+
+// interfaceHasCompoundTerm reports whether any type-set term in iface
+// (or its embedded interfaces and unions) is a compound kind (Struct/Slice/Array/Map).
+// A method-only interface (including any/interface{}) returns true: its type
+// set is unbounded and allows compound types.
+func interfaceHasCompoundTerm(iface *types.Interface) bool {
+	// No type elements: type set is unconstrained — any type allowed, incl. compound.
+	if iface.IsMethodSet() {
+		return true
+	}
+	for etyp := range iface.EmbeddedTypes() {
+		if typeElemHasCompoundTerm(etyp) {
+			return true
+		}
+	}
+	return false
+}
+
+// typeElemHasCompoundTerm reports whether a single embedded type element
+// (union, interface, named type, or unknown) contains a compound kind term.
+func typeElemHasCompoundTerm(elem types.Type) bool {
+	e := types.Unalias(elem)
+	switch u := e.(type) {
+	case *types.Union:
+		for term := range u.Terms() {
+			if isCompoundKind(term.Type()) {
+				return true
+			}
+		}
+		return false
+	case *types.Interface:
+		return interfaceHasCompoundTerm(u)
+	case *types.Named:
+		nested, ok := u.Underlying().(*types.Interface)
+		if !ok {
+			return true // named non-interface element: conservative
+		}
+		return interfaceHasCompoundTerm(nested)
+	default:
+		return true // unknown element kind: conservative
 	}
 }
 
@@ -367,13 +432,23 @@ func (matcher) debugClassify(t *types.Named, tc *typeClass) {
 }
 
 // typeArgsString formats type arguments for the classification cache key.
+// For TypeParam arguments, the constraint string is used instead of just the name,
+// so that instantiations with different constraints get distinct cache entries
+// (structural safety depends on the constraint, not the TypeParam identity).
 func typeArgsString(targs *types.TypeList) string {
 	var b strings.Builder
 	for i := range targs.Len() {
 		if i > 0 {
 			b.WriteString(", ")
 		}
-		b.WriteString(targs.At(i).String())
+		t := targs.At(i)
+		if tp, ok := t.(*types.TypeParam); ok {
+			b.WriteString("~{")
+			b.WriteString(tp.Constraint().String())
+			b.WriteString("}")
+		} else {
+			b.WriteString(t.String())
+		}
 	}
 	return b.String()
 }
