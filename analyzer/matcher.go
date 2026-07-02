@@ -457,26 +457,34 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[types.Type]bool, fa
 		}
 		// Non-Formatter pointer to compound (or reached under disable):
 		// badVerb is possible, and the pointee can be dereferenced.
-		newFactor := factorAt
-		if factorAt == nil {
-			newFactor = &disableFactor{
-				kind: factorNonFormatterPointer,
-				name: u.Elem().String(),
+		if factorAt == nil || factorAt.kind == "" {
+			if factorAt == nil {
+				factorAt = &disableFactor{
+					kind: factorNonFormatterPointer,
+					name: u.Elem().String(),
+				}
+			} else {
+				factorAt.kind = factorNonFormatterPointer
+				factorAt.name = u.Elem().String()
 			}
 		}
-		return m.walk(u.Elem(), true, true, visited, newFactor)
+		return m.walk(u.Elem(), true, true, visited, factorAt)
 
 	case *types.Struct:
 		for f := range u.Fields() {
 			fd2 := fd || !f.Exported()
 			newFactor := factorAt
-			if !f.Exported() && factorAt == nil {
-				newFactor = &disableFactor{
+			if !f.Exported() && (factorAt == nil || factorAt.kind == "") {
+				tmp := &disableFactor{
 					kind: factorUnexportedField,
 					name: f.Name(),
 				}
+				newFactor = tmp
 			}
 			if m.walk(f.Type(), fd2, bp, visited, newFactor) {
+				if newFactor != factorAt && factorAt != nil && factorAt.kind == "" {
+					*factorAt = *newFactor
+				}
 				return true
 			}
 		}

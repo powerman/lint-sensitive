@@ -14,61 +14,160 @@
 
 Go linter to detect sensitive value leaks via `fmt` reflection and builtin `print`/`println`.
 
-## Why
+## What this linter is for
 
-Sensitive types (like `github.com/powerman/sensitive.String`) redact themselves
-via `fmt.Formatter`, `fmt.Stringer`, or `fmt.GoStringer`.
-But Go's `fmt` reaches struct fields by reflection,
-and a `reflect.Value` obtained from an **unexported** field has `CanInterface() == false`.
-When `CanInterface()` is false, `fmt` skips `handleMethods`
-and prints the **raw** underlying value — the redaction is silently bypassed,
-and the secret leaks.
+A sensitive type (like `github.com/powerman/sensitive.String`) exists to keep a
+secret out of your logs and error messages.
+Using one sets up an expectation:
+"if this value is ever printed, it shows `[REDACTED]`, not the secret."
+
+That expectation is fragile.
+A field rename, an extra wrapper struct, or an added pointer can silently disable
+the redaction while the code still compiles
+and the field still holds "the sensitive type."
+**lint-sensitive exists to catch exactly these silent failures** —
+the places where a secret you believe is protected gets printed in the clear.
+
+Redaction can quietly stop working in several ways:
+
+- **`fmt` reflection through an unexported field** — `fmt` reaches struct fields
+  by reflection, and once the path to the secret crosses an unexported field
+  `fmt` stops honouring the type's `Formatter`/`Stringer`/`GoStringer`
+  and prints the **raw** underlying value.
+- **A pointer on the path** — printing a struct that holds a pointer on the way
+  to the safe type with a verb the value does not natively handle (say `%s`)
+  makes `fmt` reflect through the pointer with those same interfaces disabled.
+- **builtin `print`/`println`** — these never call any formatting interface;
+  they dump the raw value directly.
+
+There are further subtle variations, but the takeaway is always the same:
+whether the secret stays redacted depends on **how** it is reached.
+
+## How a value stays protected
 
 A sensitive type can protect its content in two ways:
 
 1. **Interfaces**: implementing `fmt.Formatter`, `fmt.Stringer`, or `fmt.GoStringer`.
-   These are honoured by `fmt` when the value is reachable
+   These are honoured by `fmt` only when the value is reachable
    through a clean (exported, non-pointer-indirect) path.
 2. **Structural protection**: storing the secret behind indirections
    that `fmt` never follows — `**T`, `*interface{}`, `chan T`, `func() T`,
    `unsafe.Pointer`, or `*<non-compound>` (`*string`, `*int`, etc.).
    These always print as an address or header regardless of verb.
 
-The linter uses **Formatter-termination reachability**:
-it walks struct fields and flags places where a path-disable factor
-(unexported field, non-Formatter pointer) would prevent the safe type's
-interfaces from firing, _and_ the type has no structural protection to fall back on.
+## How protection silently breaks
 
-### What the linter checks
+Whether redaction fires depends on the **path** `fmt` takes to reach the value,
+not just on the value's type.
+Two everyday refactors — neither of which touches the sensitive type itself —
+disable it.
 
-- **Unconditional**: it warns when a safe type's
-  `fmt.Formatter`/`Stringer`/`GoStringer` protection
-  is disabled by a path-disable factor
-  (unexported field or non-Formatter pointer),
-  the type implements at least one of these interfaces,
-  and the type has no structural protection.
-- **Optional reliability levels**: a config-driven check
-  that warns when a safe type does not provide enough protection
-  for the configured attack surface.
+### An unexported field on the path
 
-### Example
+A config with an exported `sensitive.String` prints redacted:
 
 ```go
-package example
-
-import "github.com/powerman/sensitive"
-
 type Config struct {
-	APIKey sensitive.String // exported — handled correctly by fmt
+	APIKey sensitive.String
 }
 
-type Request struct {
-	apiKey sensitive.String // unexported — LEAKS via fmt reflection
+fmt.Println(Config{APIKey: "s3cr3t"}) // {} — redacted, as expected
+```
+
+Wrap that same config in one **unexported** field and the redaction is gone:
+
+```go
+type Server struct {
+	cfg Config // one unexported word...
+}
+
+fmt.Println(Server{cfg: Config{APIKey: "s3cr3t"}}) // {{s3cr3t}} — LEAK
+```
+
+`APIKey` is still exported and its type is unchanged;
+the unexported `cfg` field alone flips `CanInterface()` to `false`
+for everything beneath it.
+
+### A pointer to the holder
+
+Adding a non-`Formatter` pointer to a struct that holds a secret is the second
+disable factor.
+Under some verbs (e.g. `%#v`) `fmt` dereferences the pointer and reflects into
+the fields with interface dispatch turned off:
+
+```go
+type Credentials struct {
+	token sensitive.String
+}
+
+type Session struct {
+	Creds *Credentials // exported field, but the pointer can still defeat redaction
 }
 ```
 
-The unexported `apiKey` field's raw value is printed
-when the parent struct reaches `fmt`'s reflection formatter.
+The linter flags every field on such a path, naming the factor that disables
+redaction so the fix is obvious:
+
+```
+server.go:2:  sensitive field "cfg" is reachable behind a unexported field "cfg";
+              the safe type's fmt.Formatter/Stringer/GoStringer then does not fire
+              and the field is not structurally protected
+              — fmt can print its secret content
+session.go:2: sensitive field "Creds" is reachable behind a non-Formatter pointer
+              to main.Credentials; the safe type's fmt.Formatter/Stringer/GoStringer
+              then does not fire and the field is not structurally protected
+              — fmt can print its secret content
+```
+
+### The builtin `print`/`println` channel
+
+These bypass redaction unconditionally, no wrapper needed:
+
+```go
+var s sensitive.String = "s3cr3t"
+println(s) // s3cr3t — Stringer/Formatter is never consulted
+```
+
+### Every supported library, both channels
+
+By default the linter recognises four sensitive-value libraries (see below).
+The [`example/`](example/) directory is a self-contained module with a runnable
+program that leaks every one of them through both channels
+— `fmt` reflection and builtin `print` —
+so you can watch the failures and the findings side by side:
+
+```bash
+cd example
+go run .        # observe the leaked secrets on stdout
+lint-sensitive -sensitive.types=github.com/powerman/lint-sensitive/example.Secret .
+```
+
+## What the linter can and cannot guarantee
+
+The linter reasons about **formal, structural signs** only:
+that a configured safe type implements one of the `fmt` interfaces,
+or that it embeds a structurally-protected type.
+It **assumes** those mechanisms exist to protect the secret
+and checks only that the access path does not disable them.
+
+It does **not** verify that a mechanism is actually wired to the secret.
+A type may implement `Format` and still print the secret through a buggy method;
+a type may embed a `**T` field that holds something other than the secret.
+Such misuse is out of scope — the linter treats the presence of the mechanism
+as intent, because any other use of it would be pointless.
+
+Because of this, the two checks it performs both exist for one purpose —
+to surface places where the protection a developer **expects** silently does not hold:
+
+- **Unconditional**: warn when a safe type's `Formatter`/`Stringer`/`GoStringer`
+  protection is disabled by a path-disable factor
+  (unexported field or non-`Formatter` pointer),
+  the type implements at least one of these interfaces,
+  and the type has no structural protection to fall back on.
+- **Optional reliability levels**: a config-driven check that warns when a safe
+  type does not provide enough protection for a configured attack surface.
+  Use it to state, per project, what "protected" must actually mean
+  (see [Optional reliability levels](#optional-reliability-levels)).
 
 ## Installation
 
@@ -163,8 +262,20 @@ By default the linter only checks the **unconditional** condition:
 a safe type must not leak content when its Formatter/Stringer/GoStringer
 interface is disabled by a path-disable factor.
 
-For projects that need stronger guarantees,
-five boolean flags opt in to **config-driven reliability warnings**.
+The unconditional check only guards against _weakening_ whatever protection a
+type already has; it says nothing about whether that protection is enough.
+Consider a safe type that implements only `GoStringer`:
+it redacts under `%#v`, but a plain `%v`/`%s` prints the secret,
+and an `encoding/json` marshal writes it straight into the output.
+The unconditional check stays silent — nothing is being _disabled_ —
+even though the secret leaks on the very first log line or API response.
+
+**Recommended: make your expectations explicit.**
+Decide which surfaces your secrets must survive (JSON, all `fmt` verbs, `%v`, …)
+and turn on the matching `-sensitive.require-*` flags.
+Instead of hoping every "safe" type is safe enough,
+you state the requirement once and the linter reports any type that falls short.
+
 When a flag is set, every safe type used in the analyzed package
 is checked against the corresponding attack surface.
 Safe types that do not meet the requirement are reported.
