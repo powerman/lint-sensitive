@@ -307,8 +307,8 @@ each type in the existing libraries provides (as of 2026-07-02).
 | `powerman/sensitive.String`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
 | `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓²         |
 | `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
-| `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³⁴        |
-| `andrewbenton/go-secrets.Secret[T]` | ✓⁵   | ✗    | ✓   | ✓     | ✓         | ✓⁶         |
+| `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
+| `andrewbenton/go-secrets.Secret[T]` | ✓    | ✗    | ✓   | ✓     | ✓         | ✓⁴         |
 | `go-playground/sensitive.String`    | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
 | `negrel/secrecy.Secret[T]`          | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
 | `angusgmorrison/logfusc.Secret[T]`  | ✓    | ✗    | ✗   | ✓     | ✓         | ✗          |
@@ -316,11 +316,7 @@ each type in the existing libraries provides (as of 2026-07-02).
 ¹ — via `encoding.TextMarshaler`.<br/>
 ² — `**T` — double pointer, `fmt` never dereferences it.<br/>
 ³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.<br/>
-⁴ — `rsjethani/secret` stores the secret in a `*string`; its protection is therefore structural
-even though it also implements `Stringer`/`TextMarshaler`. It handles `string` only.<br/>
-⁵ — `go-secrets` marshals the zero value of `T`, so redaction is present but not configurable.<br/>
-⁶ — `go-secrets` stores the secret behind `func() T` closures, which `fmt` never dereferences.
-Note its `reflect.DeepEqual` is broken: non-nil funcs never compare equal.
+⁴ — `func() T` closures, `fmt` never dereferences.
 
 ### Flags
 
