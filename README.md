@@ -68,7 +68,7 @@ A config with an exported `sensitive.String` prints redacted:
 
 ```go
 type Config struct {
-	APIKey sensitive.String
+    APIKey sensitive.String
 }
 
 fmt.Println(Config{APIKey: "s3cr3t"}) // {} — redacted, as expected
@@ -78,7 +78,7 @@ Wrap that same config in one **unexported** field and the redaction is gone:
 
 ```go
 type Server struct {
-	cfg Config // one unexported word...
+    cfg Config // one unexported word...
 }
 
 fmt.Println(Server{cfg: Config{APIKey: "s3cr3t"}}) // {{s3cr3t}} — LEAK
@@ -97,18 +97,18 @@ the fields with interface dispatch turned off:
 
 ```go
 type Credentials struct {
-	token sensitive.String
+    token sensitive.String
 }
 
 type Session struct {
-	Creds *Credentials // exported field, but the pointer can still defeat redaction
+    Creds *Credentials // exported field, but the pointer can still defeat redaction
 }
 ```
 
 The linter flags every field on such a path, naming the factor that disables
 redaction so the fix is obvious:
 
-```
+```text
 server.go:2:  sensitive field "cfg" is reachable behind a unexported field "cfg";
               the safe type's fmt.Formatter/Stringer/GoStringer then does not fire
               and the field is not structurally protected
@@ -138,7 +138,7 @@ so you can watch the failures and the findings side by side:
 
 ```bash
 cd example
-go run .        # observe the leaked secrets on stdout
+go run . # observe the leaked secrets on stdout
 lint-sensitive -sensitive.types=github.com/powerman/lint-sensitive/example.Secret .
 ```
 
@@ -298,11 +298,29 @@ or `*<non-compound>` (`*string`, `*int`, `*bool`, etc.).
 These are the types that `fmt.Printf` never dereferences —
 it always prints an address or header, regardless of the verb.
 
+### Existing library support
+
+The table below shows which protection surfaces (`-sensitive.require-*`)
+each type in the existing libraries provides (as of 2026-07-02).
+
+| Safe type                          | JSON | Text | fmt | `%#v` | `%v`/`%s` | Structural |
+| ---------------------------------- | ---- | ---- | --- | ----- | --------- | ---------- |
+| `powerman/sensitive.String`        | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
+| `powerman/sensitive.Ref[T]`        | ✓    | ✓    | ✓   | ✓     | ✓         | ✓²         |
+| `powerman/sensitive.Handle[T]`     | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
+| `go-playground/sensitive.String`   | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
+| `negrel/secrecy.Secret[T]`         | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
+| `angusgmorrison/logfusc.Secret[T]` | ✓    | ✗    | ✗   | ✓     | ✓         | ✗          |
+
+¹ — via `encoding.TextMarshaler`.<br/>
+² — `**T` — double pointer, `fmt` never dereferences it.<br/>
+³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.
+
 ### Flags
 
 Diagnostics are OFF by default; enable each surface independently:
 
-```
+```text
 -sensitive.require-marshal-json
 -sensitive.require-marshal-text
 -sensitive.require-format
