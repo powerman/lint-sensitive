@@ -229,6 +229,15 @@ func TestIsSensitiveNamed(t *testing.T) {
 	// Predeclared error type from universe scope has nil Obj().Pkg().
 	errorType := types.Universe.Lookup("error").Type()
 
+	// Interface type from the same package.
+	iface := types.NewInterfaceType(nil, nil)
+	iface.Complete()
+	ifaceNamed := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Interface", nil),
+		iface,
+		nil,
+	)
+
 	tests := []struct {
 		name string
 		m    matcher
@@ -257,6 +266,18 @@ func TestIsSensitiveNamed(t *testing.T) {
 			name: "matching_type_name",
 			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret.Data"}}),
 			typ:  namedType,
+			want: true,
+		},
+		{
+			name: "interface_from_package_entry",
+			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret"}}),
+			typ:  ifaceNamed,
+			want: false,
+		},
+		{
+			name: "interface_from_explicit_type_entry",
+			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret.Interface"}}),
+			typ:  ifaceNamed,
 			want: true,
 		},
 	}

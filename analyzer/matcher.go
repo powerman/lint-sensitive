@@ -103,6 +103,9 @@ func (m matcher) addEntry(entry string) {
 // whose defining package is in the configured set.
 // Uses the defining package (named.Obj().Pkg().Path()),
 // which is robust against renamed imports and dot-imports.
+//
+// When a package-only entry is used (no explicit type name),
+// interface types are not considered sensitive.
 func (m matcher) isSensitiveNamed(t types.Type) bool {
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
@@ -113,6 +116,11 @@ func (m matcher) isSensitiveNamed(t types.Type) bool {
 		return false
 	}
 	if m.packages[pkg.Path()] {
+		// A package-only entry matches all named types,
+		// but interface types should not be treated as sensitive.
+		if _, isInterface := named.Underlying().(*types.Interface); isInterface {
+			return false
+		}
 		return true
 	}
 	return m.types[packageType{Pkg: pkg.Path(), Name: named.Obj().Name()}]
