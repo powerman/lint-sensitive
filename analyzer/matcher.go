@@ -209,6 +209,20 @@ func (matcher) hasMethod(t types.Type, name string) bool {
 	return false
 }
 
+// isSecretExposer reports whether t is a SecretExposer interface —
+// an interface that declares an ExposeSecret method.
+// This is the convention used by github.com/powerman/sensitive.Secret[T]
+// and github.com/negrel/secrecy.SecretExposer[T].
+// The check is by method name only; the exact return type is not verified.
+func (matcher) isSecretExposer(t *types.Interface) bool {
+	for method := range t.Methods() {
+		if method.Name() == "ExposeSecret" {
+			return true
+		}
+	}
+	return false
+}
+
 // classify performs lazy classification of a configured safe type.
 // It caches the result in m.typeClasses.
 func (m matcher) classify(t *types.Named) *typeClass {
@@ -512,9 +526,17 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[types.Type]bool, fa
 			m.walk(u.Elem(), fd, bp, visited, factorAt)
 
 	case *types.Interface:
-		// Dynamic value could be a safe type reachable under this fd/bp.
-		// Conservative: report iff fd or bp is set.
-		return fd || bp
+		// Flag only SecretExposer interfaces — those that have an ExposeSecret method,
+		// the convention used by github.com/powerman/sensitive.Secret[T] and
+		// github.com/negrel/secrecy.SecretExposer[T].
+		// Generic any/interface{} and all other arbitrary interfaces are NOT flagged:
+		// the static analyzer cannot know what concrete type will be stored in them,
+		// and flagging them causes a torrent of false positives from external library
+		// internals (e.g. prometheus.Metric or error deep inside a metrics struct).
+		if m.isSecretExposer(u) {
+			return fd || bp
+		}
+		return false
 
 	case *types.Chan, *types.Signature, *types.Basic:
 		return false // address/header/primitive

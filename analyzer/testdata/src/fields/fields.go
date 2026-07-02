@@ -112,11 +112,24 @@ type recursiveSensitive struct {
 	x    fakesensitive.String // want "is reachable behind a"
 }
 
-// InterfaceField — interface-typed field is conservatively flagged
-// when reachable under a disable factor because the dynamic value
-// could be a safe type that would leak.
-type ifaceField struct {
-	v any // want "is reachable behind a"
+// SecretExposerField — a field of a SecretExposer interface type (ExposeSecret method)
+// is flagged when reachable under a disable factor:
+// the concrete value's Formatter won't fire, and the content may leak.
+type secretExposerField struct {
+	s fakesensitive.Secret[string] // want "is reachable behind a"
+}
+
+// EmptyInterfaceField — any/interface{} is NOT flagged:
+// the static analyzer cannot know what concrete type will be stored.
+type emptyInterfaceField struct {
+	v any // No diagnostic: empty interface, cannot determine if it holds sensitive data.
+}
+
+// ArbitraryInterfaceField — an arbitrary interface without ExposeSecret is NOT flagged,
+// even when reachable under a disable factor, to avoid false positives from external
+// library types that use interface fields for their own implementation.
+type arbitraryInterfaceField struct {
+	v interface{ Foo() } // No diagnostic: no ExposeSecret, not a secret container.
 }
 
 // RefField tests that a Ref[T] struct field (double-pointer-backed)

@@ -50,3 +50,9 @@ type Handle[T any] struct {
 func (h Handle[T]) Format(f fmt.State, verb rune) {
 	fmt.Fprint(f, "[redacted]")
 }
+
+// Secret is a SecretExposer interface, mirroring github.com/powerman/sensitive.Secret[T]
+// and github.com/negrel/secrecy.SecretExposer[T].
+type Secret[T any] interface {
+	ExposeSecret() T
+}
