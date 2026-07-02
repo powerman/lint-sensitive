@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-07-02
+
+### 🔔 Changed
+
+- Update to powerman/sensitive v0.2.0 — Ref/Handle and pointer-to-compound leak by @powerman in [124a970]
+
+### 🐛 Fixed
+
+- Treat `*TypeParam` as qualifier when constraint excludes compound kinds by @powerman in [1cd1f8c]
+
+### 📚 Documentation
+
+- Add rsjethani/secret and andrewbenton/go-secrets to support table, add Related tools section by @powerman in [99ea773]
+
+[0.3.3]: https://github.com/powerman/lint-sensitive/compare/v0.3.2..v0.3.3
+[124a970]: https://github.com/powerman/lint-sensitive/commit/124a970890effade763f64c145b1fd6f8eebb2f3
+[99ea773]: https://github.com/powerman/lint-sensitive/commit/99ea773a794d2d735fd7914b55df35416ba2e259
+[1cd1f8c]: https://github.com/powerman/lint-sensitive/commit/1cd1f8c69ecdd173879e253d4c4f62ef8af6f711
+
 ## [0.3.2] - 2026-07-02
 
 ### 🐛 Fixed
