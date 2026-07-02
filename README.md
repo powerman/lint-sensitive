@@ -47,7 +47,7 @@ interfaces from firing, _and_ the type has no structural protection to fall back
   (unexported field or non-Formatter pointer),
   the type implements at least one of these interfaces,
   and the type has no structural protection.
-- **Optional reliability levels (planned)**: a config-driven check
+- **Optional reliability levels**: a config-driven check
   that warns when a safe type does not provide enough protection
   for the configured attack surface.
 
@@ -156,6 +156,58 @@ Two analyzers are registered in the `lint-sensitive` binary:
 | ----------------- | ------------------------------------------------------------------------------------------------------------ |
 | `sensitivefields` | Detects struct fields (exported AND unexported) where a safe type is reachable behind a path-disable factor. |
 | `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                         |
+
+## Optional reliability levels
+
+By default the linter only checks the **unconditional** condition:
+a safe type must not leak content when its Formatter/Stringer/GoStringer
+interface is disabled by a path-disable factor.
+
+For projects that need stronger guarantees,
+five boolean flags opt in to **config-driven reliability warnings**.
+When a flag is set, every safe type used in the analyzed package
+is checked against the corresponding attack surface.
+Safe types that do not meet the requirement are reported.
+
+The five surfaces and their acceptable safeguards:
+
+| Surface                    | Acceptable safeguards (any one)                                     |
+| -------------------------- | ------------------------------------------------------------------- |
+| JSON marshal               | `encoding.TextMarshaler` OR `json.Marshaler`                        |
+| Text marshal               | `encoding.TextMarshaler`                                            |
+| All fmt verbs              | `fmt.Formatter` OR structurally-protected field                     |
+| `%#v`                      | `fmt.GoStringer` OR `fmt.Formatter` OR structurally-protected field |
+| `%v`/`%s`/`%q`/`%x`¹/`%X`¹ | `fmt.Stringer` OR `fmt.Formatter` OR structurally-protected field   |
+
+¹ - Works on strings, but not on float types.
+
+A "structurally-protected field" means one of:
+`**T`, `*interface{}`, `chan T`, `func() T`, `unsafe.Pointer`,
+or `*<non-compound>` (`*string`, `*int`, `*bool`, etc.).
+These are the types that `fmt.Printf` never dereferences —
+it always prints an address or header, regardless of the verb.
+
+### Flags
+
+Diagnostics are OFF by default; enable each surface independently:
+
+```
+-sensitive.require-marshal-json
+-sensitive.require-marshal-text
+-sensitive.require-format
+-sensitive.require-gostring
+-sensitive.require-string
+```
+
+Example:
+
+```bash
+lint-sensitive -sensitive.require-format ./...
+```
+
+When a safe type does not provide the required level of protection,
+the diagnostic names the missing interface or structural property
+so you know what to implement.
 
 ## Fixing findings
 

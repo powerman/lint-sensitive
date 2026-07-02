@@ -1,12 +1,12 @@
 package fields
 
 import (
-	"fakesensitive"
-	"fakeplayground"
 	"fakelogfusc"
+	"fakeplayground"
 	"fakesecrecy"
-	fs "fakesensitive"
+	"fakesensitive"
 	. "fakesensitive"
+	fs "fakesensitive"
 )
 
 // SomeStruct is a simple struct used as a type parameter.
@@ -108,7 +108,7 @@ type RecursiveNode struct {
 // RecursiveSensitive tests that a recursive type WITH a sensitive field
 // directly is still detected (no false negative from visited set).
 type recursiveSensitive struct {
-	self *recursiveSensitive // want "is reachable behind a"
+	self *recursiveSensitive  // want "is reachable behind a"
 	x    fakesensitive.String // want "is reachable behind a"
 }
 

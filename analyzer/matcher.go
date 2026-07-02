@@ -19,6 +19,12 @@ type matcher struct {
 	skipGenerated bool
 	debug         bool
 
+	requireMarshalJSON bool
+	requireMarshalText bool
+	requireFormat      bool
+	requireGoString    bool
+	requireString      bool
+
 	typeClasses map[*types.Named]*typeClass // classification cache (shared by copy)
 	typeMu      *sync.Mutex                 // guards typeClasses
 }
@@ -58,8 +64,15 @@ func newMatcher(cfg Config) matcher {
 		skipTests:     cfg.SkipTests,
 		skipGenerated: cfg.SkipGenerated,
 		debug:         cfg.Debug,
-		typeClasses:   make(map[*types.Named]*typeClass),
-		typeMu:        &sync.Mutex{},
+
+		requireMarshalJSON: cfg.RequireMarshalJSON,
+		requireMarshalText: cfg.RequireMarshalText,
+		requireFormat:      cfg.RequireFormat,
+		requireGoString:    cfg.RequireGoString,
+		requireString:      cfg.RequireString,
+
+		typeClasses: make(map[*types.Named]*typeClass),
+		typeMu:      &sync.Mutex{},
 	}
 	if !cfg.NoDefaultTypes {
 		for _, e := range defaultTypes {

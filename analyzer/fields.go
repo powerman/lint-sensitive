@@ -80,6 +80,8 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 		}
 	})
 
+	m.runReliabilityLevels(pass)
+
 	//nolint:nilnil // Returning nil, nil is standard for go/analysis analyzers.
 	return nil, nil
 }

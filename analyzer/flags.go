@@ -51,6 +51,16 @@ func init() { //nolint:gochecknoinits // Required for flag registration.
 		"Do not report diagnostics in _test.go files")
 	FlagAnalyzer.Flags.Bool("skip-generated", false,
 		"Do not report diagnostics in generated files (Code generated ... DO NOT EDIT)")
+	FlagAnalyzer.Flags.Bool("require-marshal-json", false,
+		"Require all configured safe types to implement encoding.TextMarshaler or json.Marshaler")
+	FlagAnalyzer.Flags.Bool("require-marshal-text", false,
+		"Require all configured safe types to implement encoding.TextMarshaler")
+	FlagAnalyzer.Flags.Bool("require-format", false,
+		"Require all configured safe types to implement fmt.Formatter or be structurally protected")
+	FlagAnalyzer.Flags.Bool("require-gostring", false,
+		"Require all configured safe types to implement fmt.GoStringer, fmt.Formatter, or be structurally protected")
+	FlagAnalyzer.Flags.Bool("require-string", false,
+		"Require all configured safe types to implement fmt.Stringer, fmt.Formatter, or be structurally protected")
 	FlagAnalyzer.Flags.Bool("debug", false,
 		"Print sensitive type classification to stderr")
 }
@@ -80,12 +90,37 @@ func runFlag(pass *analysis.Pass) (any, error) {
 	if f := pass.Analyzer.Flags.Lookup("debug"); f != nil {
 		debug = f.Value.String() == trueStr
 	}
+	requireMarshalJSON := false
+	if f := pass.Analyzer.Flags.Lookup("require-json-safety"); f != nil {
+		requireMarshalJSON = f.Value.String() == trueStr
+	}
+	requireMarshalText := false
+	if f := pass.Analyzer.Flags.Lookup("require-marshal-text"); f != nil {
+		requireMarshalText = f.Value.String() == trueStr
+	}
+	requireFormat := false
+	if f := pass.Analyzer.Flags.Lookup("require-format"); f != nil {
+		requireFormat = f.Value.String() == trueStr
+	}
+	requireGoString := false
+	if f := pass.Analyzer.Flags.Lookup("require-gostring"); f != nil {
+		requireGoString = f.Value.String() == trueStr
+	}
+	requireString := false
+	if f := pass.Analyzer.Flags.Lookup("require-string"); f != nil {
+		requireString = f.Value.String() == trueStr
+	}
 	return newMatcher(Config{
-		Types:          splitCSV(typesFlag.Value.String()),
-		NoDefaultTypes: noDefaults,
-		SkipTests:      skipTests,
-		SkipGenerated:  skipGenerated,
-		Debug:          debug,
+		Types:              splitCSV(typesFlag.Value.String()),
+		NoDefaultTypes:     noDefaults,
+		SkipTests:          skipTests,
+		SkipGenerated:      skipGenerated,
+		RequireMarshalJSON: requireMarshalJSON,
+		RequireMarshalText: requireMarshalText,
+		RequireFormat:      requireFormat,
+		RequireGoString:    requireGoString,
+		RequireString:      requireString,
+		Debug:              debug,
 	}), nil
 }
 

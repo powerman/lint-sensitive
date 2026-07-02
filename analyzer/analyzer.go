@@ -43,6 +43,30 @@ type Config struct {
 	// (those containing the standard "// Code generated ... DO NOT EDIT." header).
 	SkipGenerated bool
 
+	// RequireMarshalJSON, when true, emits diagnostics for safe types
+	// that do not implement encoding.TextMarshaler or json.Marshaler.
+	RequireMarshalJSON bool
+
+	// RequireMarshalText, when true, emits diagnostics for safe types
+	// that do not implement encoding.TextMarshaler.
+	RequireMarshalText bool
+
+	// RequireFormat, when true, emits diagnostics for safe types
+	// that do not implement fmt.Formatter
+	// and are not structurally protected
+	// (**T, *interface{}, chan T, func() T, unsafe.Pointer, *<non-compound>).
+	RequireFormat bool
+
+	// RequireGoString, when true, emits diagnostics for safe types
+	// that do not implement fmt.GoStringer, fmt.Formatter,
+	// and are not structurally protected.
+	RequireGoString bool
+
+	// RequireString, when true, emits diagnostics for safe types
+	// that do not implement fmt.Stringer, fmt.Formatter,
+	// and are not structurally protected.
+	RequireString bool
+
 	// Verbose flag enables diagnostic output to stderr
 	// showing the classification of each sensitive type.
 	Debug bool

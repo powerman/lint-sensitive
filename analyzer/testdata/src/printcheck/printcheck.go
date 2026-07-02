@@ -3,8 +3,8 @@ package printcheck
 import (
 	"fmt"
 
-	"fakesensitive"
 	"fakeplayground"
+	"fakesensitive"
 )
 
 // Positive cases: basic-kind sensitive types passed by value.
@@ -31,7 +31,7 @@ func testPrintNonSensitive() {
 
 func testPrintSensitivePointer() {
 	var s fakesensitive.String
-	print(&s)  // No diagnostic: pointer does not leak content through print.
+	print(&s) // No diagnostic: pointer does not leak content through print.
 	println(&s)
 }
 
@@ -39,7 +39,7 @@ func testPrintSensitiveSlice() {
 	// sensitive.Bytes in production has underlying []byte — slice header,
 	// not content.
 	var b []fakesensitive.String
-	print(b)   // No diagnostic: slice header, not content.
+	print(b) // No diagnostic: slice header, not content.
 	println(b)
 }
 
