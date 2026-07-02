@@ -113,7 +113,7 @@ func TestVersionFlag(t *testing.T) {
 	if len(fields) < 3 || fields[1] != "version" || fields[2] == "" {
 		t.Fatalf("-V=full unexpected output: %q", got)
 	}
-	if !strings.HasPrefix(got, "lint-sensitive ") {
+	if strings.TrimSuffix(fields[0], ".exe") != "lint-sensitive" {
 		t.Fatalf("-V=full progname missing: %q", got)
 	}
 
