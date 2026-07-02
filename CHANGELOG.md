@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-02
+
+### 🚀 Added
+
+- Add config-driven reliability-level warnings by @powerman in [eb7e6db]
+
+### 🔔 Changed
+
+- Rework linter to Formatter-termination reachability model by @powerman in [92fb9b1]
+
+### 🐛 Fixed
+
+- Preserve disable factor through non-Formatter pointer walk by @powerman in [c2caa7e]
+
+### 📚 Documentation
+
+- Add existing-library-support table to reliability section by @powerman in [6f29ba0]
+
+[0.3.0]: https://github.com/powerman/lint-sensitive/compare/v0.2.0..v0.3.0
+[92fb9b1]: https://github.com/powerman/lint-sensitive/commit/92fb9b1aee0ff80a71045b004a051aa8cc452f1f
+[eb7e6db]: https://github.com/powerman/lint-sensitive/commit/eb7e6dbf05d237c7c5ac0388ed75fbd6ee79af04
+[c2caa7e]: https://github.com/powerman/lint-sensitive/commit/c2caa7e375d8e9909de47608e8dd3bc398dd4217
+[6f29ba0]: https://github.com/powerman/lint-sensitive/commit/6f29ba00185eeb2186d0a235507078ff6a21508f
+
 ## [0.2.0] - 2026-06-30
 
 ### 🚀 Added
