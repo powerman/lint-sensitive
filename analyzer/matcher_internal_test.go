@@ -238,6 +238,13 @@ func TestIsSensitiveNamed(t *testing.T) {
 		nil,
 	)
 
+	// Unexported type from the same package.
+	unexportedNamed := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "unexported", nil),
+		types.NewSlice(types.Typ[types.Int]),
+		nil,
+	)
+
 	tests := []struct {
 		name string
 		m    matcher
@@ -279,6 +286,12 @@ func TestIsSensitiveNamed(t *testing.T) {
 			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret.Interface"}}),
 			typ:  ifaceNamed,
 			want: true,
+		},
+		{
+			name: "unexported_type_from_package_entry",
+			m:    newMatcher(Config{NoDefaultTypes: true, Types: []string{"example.com/secret"}}),
+			typ:  unexportedNamed,
+			want: false,
 		},
 	}
 

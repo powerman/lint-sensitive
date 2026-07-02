@@ -105,7 +105,7 @@ func (m matcher) addEntry(entry string) {
 // which is robust against renamed imports and dot-imports.
 //
 // When a package-only entry is used (no explicit type name),
-// interface types are not considered sensitive.
+// interface and unexported types are not considered sensitive.
 func (m matcher) isSensitiveNamed(t types.Type) bool {
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
@@ -117,8 +117,11 @@ func (m matcher) isSensitiveNamed(t types.Type) bool {
 	}
 	if m.packages[pkg.Path()] {
 		// A package-only entry matches all named types,
-		// but interface types should not be treated as sensitive.
+		// but interface and unexported types should not be treated as sensitive.
 		if _, isInterface := named.Underlying().(*types.Interface); isInterface {
+			return false
+		}
+		if !named.Obj().Exported() {
 			return false
 		}
 		return true
