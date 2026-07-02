@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-07-02
+
+### 🐛 Fixed
+
+- Only flag SecretExposer interfaces, not all interface types by @powerman in [ae4d15b]
+- Eliminate duplicate -sensitive.debug output across packages by @powerman in [0a0605b]
+
+[0.3.2]: https://github.com/powerman/lint-sensitive/compare/v0.3.1..v0.3.2
+[ae4d15b]: https://github.com/powerman/lint-sensitive/commit/ae4d15b9e66e62a84212a77482218cdfe2bcbb31
+[0a0605b]: https://github.com/powerman/lint-sensitive/commit/0a0605b15d6d6770c3e3643f48bb6aad0de59c8b
+
 ## [0.3.1] - 2026-07-02
 
 ### 🐛 Fixed
