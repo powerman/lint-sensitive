@@ -27,7 +27,8 @@ type Public string
 // leakDemo groups all leakable types as unexported fields.
 // Fields 1-5 are sensitive (caught by the linter). Field 6 is NOT sensitive
 // and should NOT be flagged — demonstrating type-level granularity.
-// Field 7 uses [sensitive.Boxed] which is reflection-proof — also NOT flagged.
+// Fields 7-8 use [sensitive.Ref] and [sensitive.Handle] which protect
+// against fmt reflection — also NOT flagged.
 // When printed via fmt, all raw values leak because reflection on unexported
 // fields bypasses Stringer/Formatter.
 type leakDemo struct {
@@ -37,11 +38,27 @@ type leakDemo struct {
 	logfusc    logfusc.Secret[string]     // leak:
 	secret     Secret                     // leak:
 	public     Public
-	boxed      powermanSensitive.Boxed[string] // no-leak: **T reflection-proof
+	ref        powermanSensitive.Ref[string]    // no-leak: **T reflection-proof
+	handle     powermanSensitive.Handle[string] // no-leak: *string (non-compound)
+}
+
+// innerStruct contains an unexported sensitive field.
+// Used to demonstrate leaks via exported pointer to a compound type.
+type innerStruct struct {
+	secret powermanSensitive.String
+	public Public
+}
+
+// leakViaPointer demonstrates the second kind of leak:
+// an exported pointer to a compound type (struct).
+// fmt triggers badVerb on the non-Formatter *innerStruct pointer,
+// dereferences the struct, and accesses unexported fields without Format().
+type leakViaPointer struct {
+	P *innerStruct // exported pointer to compound → badVerb dereferences it
 }
 
 func main() {
-	// This shows the leak: all unexported field values are printed raw.
+	// Unexported field leak: all sensitive field values are printed raw.
 	fmt.Println(leakDemo{
 		powerman:   "value protected by powerman/sensitive.String",
 		playground: "value protected by go-playground/sensitive.String",
@@ -49,7 +66,16 @@ func main() {
 		logfusc:    logfusc.NewSecret("value protected by logfusc.Secret"),
 		secret:     "value protected by Secret (declared in main)",
 		public:     "value protected by Public (not sensitive)",
-		boxed:      powermanSensitive.New("value protected by Boxed from fmt reflection"),
+		ref:        powermanSensitive.New("value protected by Ref from fmt reflection"),
+		handle:     powermanSensitive.Make("value protected by Handle from fmt reflection"),
+	})
+
+	// Pointer-to-compound leak: exported pointer field dereferences and leaks.
+	fmt.Println(leakViaPointer{
+		P: &innerStruct{
+			secret: "value protected by powerman/sensitive.String",
+			public: "value protected by Public (not sensitive)",
+		},
 	})
 
 	// Builtin print/println also leak sensitive basic-kind-by-value types.
