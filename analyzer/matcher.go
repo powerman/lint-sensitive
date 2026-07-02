@@ -25,8 +25,8 @@ type matcher struct {
 	requireGoString    bool
 	requireString      bool
 
-	typeClasses map[*types.Named]*typeClass // classification cache (shared by copy)
-	typeMu      *sync.Mutex                 // guards typeClasses
+	typeClasses map[string]*typeClass // classification cache keyed by type identity
+	typeMu      *sync.Mutex           // guards typeClasses
 }
 
 // typeClass records the classification of a configured safe type.
@@ -39,6 +39,12 @@ type typeClass struct {
 	structurallySafe bool
 	anyFmtInterface  bool // = fmtFormatter || fmtStringer || fmtGoStringer
 }
+
+// require plumbing shared state across every per-package matcher in the
+// flag-driven path, which the go/analysis framework does not support.
+//
+//nolint:gochecknoglobals // Debug-only global dedup — the alternative would
+var debugPrinted sync.Map
 
 // disableFactor records the first factor on the path
 // that disables [Formatter]/[Stringer]/[GoStringer] interface dispatch.
@@ -71,7 +77,7 @@ func newMatcher(cfg Config) matcher {
 		requireGoString:    cfg.RequireGoString,
 		requireString:      cfg.RequireString,
 
-		typeClasses: make(map[*types.Named]*typeClass),
+		typeClasses: make(map[string]*typeClass),
 		typeMu:      &sync.Mutex{},
 	}
 	if !cfg.NoDefaultTypes {
@@ -223,14 +229,28 @@ func (matcher) isSecretExposer(t *types.Interface) bool {
 	return false
 }
 
+// typeKey returns a string key that uniquely identifies a [*types.Named]
+// across packages, allowing the classification cache to work correctly
+// when the same logical type is encountered from different importing packages
+// (each has its own [*types.Named] pointer).
+func typeKey(t *types.Named) string {
+	typeName := t.Obj().Name()
+	if t.TypeParams() != nil && t.TypeArgs() != nil {
+		typeName += "[" + typeArgsString(t.TypeArgs()) + "]"
+	}
+	return packageTypeName(t) + "." + typeName
+}
+
 // classify performs lazy classification of a configured safe type.
 // It caches the result in m.typeClasses.
 func (m matcher) classify(t *types.Named) *typeClass {
+	key := typeKey(t)
+
 	// Lock the entire operation: check cache, compute, store.
 	m.typeMu.Lock()
 	defer m.typeMu.Unlock()
 
-	if tc, ok := m.typeClasses[t]; ok {
+	if tc, ok := m.typeClasses[key]; ok {
 		return tc
 	}
 
@@ -243,10 +263,18 @@ func (m matcher) classify(t *types.Named) *typeClass {
 	tc.anyFmtInterface = tc.fmtFormatter || tc.fmtStringer || tc.fmtGoStringer
 	tc.structurallySafe = m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool))
 
-	m.typeClasses[t] = tc
+	m.typeClasses[key] = tc
 
 	if m.debug {
-		m.debugClassify(t, tc)
+		// Use base type name (without type args) for dedup —
+		// classification characteristics (Formatter, Stringer, etc.)
+		// depend on the type's method set, which is the same regardless
+		// of generic instantiation. Global dedup avoids printing the
+		// same classification when the type appears in different packages.
+		debugKey := packageTypeName(t) + "." + t.Obj().Name()
+		if _, loaded := debugPrinted.LoadOrStore(debugKey, struct{}{}); !loaded {
+			m.debugClassify(t, tc)
+		}
 	}
 
 	return tc
@@ -332,18 +360,13 @@ func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) b
 
 // debugClassify prints one classification line to stderr.
 func (matcher) debugClassify(t *types.Named, tc *typeClass) {
-	// Format the type name including package and type arguments.
-	typeName := t.Obj().Name()
-	if t.TypeParams() != nil && t.TypeArgs() != nil {
-		typeName += "[" + typeArgsString(t.TypeArgs()) + "]"
-	}
 	log.Printf("sensitive type %s: Formatter=%v Stringer=%v GoStringer=%v json.Marshaler=%v encoding.TextMarshaler=%v structurallySafe=%v",
-		packageTypeName(t)+"."+typeName,
+		packageTypeName(t)+"."+t.Obj().Name(),
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
 		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe)
 }
 
-// typeArgsString formats type arguments for debug output.
+// typeArgsString formats type arguments for the classification cache key.
 func typeArgsString(targs *types.TypeList) string {
 	var b strings.Builder
 	for i := range targs.Len() {

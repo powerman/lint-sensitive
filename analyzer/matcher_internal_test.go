@@ -8,6 +8,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
@@ -593,4 +594,83 @@ func TestDebugFlag(t *testing.T) {
 	// exist, and TypeList has no public constructor). Covering this function
 	// would require the full type-checker and a generic source file, which is
 	// impractical for a unit test.
+}
+
+// TestDebugDedup verifies that classify prints at most one debug line per
+// logical type, even when called with different *types.Named objects
+// representing the same type (which happens when the same type is analyzed
+// in different packages, each with its own *types.Named pointer).
+// Not parallel — clears global debugPrinted state.
+//
+//nolint:paralleltest // Uses global state, cannot run in parallel.
+func TestDebugDedup(t *testing.T) {
+	// Clear global dedup state from any previous test run.
+	debugPrinted = sync.Map{}
+
+	testPkg := types.NewPackage("example.com/testdedup", "testdedup")
+
+	// Create a named type to classify.
+	named := types.NewNamed(
+		types.NewTypeName(token.NoPos, testPkg, "MyType", nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+	recv := types.NewVar(token.NoPos, testPkg, "", named)
+	named.AddMethod(types.NewFunc(
+		token.NoPos, testPkg, "Format",
+		types.NewSignatureType(recv, nil, nil,
+			types.NewTuple(
+				types.NewVar(token.NoPos, nil, "s", types.Typ[types.Uintptr]),
+				types.NewVar(token.NoPos, nil, "v", types.Typ[types.Rune]),
+			), nil, false,
+		),
+	))
+
+	// Create a second *types.Named with the same package and type name
+	// (simulating the same type from a different package's type-checker).
+	namedOther := types.NewNamed(
+		types.NewTypeName(token.NoPos, testPkg, "MyType", nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+	recvOther := types.NewVar(token.NoPos, testPkg, "", namedOther)
+	namedOther.AddMethod(types.NewFunc(
+		token.NoPos, testPkg, "Format",
+		types.NewSignatureType(recvOther, nil, nil,
+			types.NewTuple(
+				types.NewVar(token.NoPos, nil, "s", types.Typ[types.Uintptr]),
+				types.NewVar(token.NoPos, nil, "v", types.Typ[types.Rune]),
+			), nil, false,
+		),
+	))
+
+	// Collect debug output from two classify calls with different *types.Named.
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	m := newMatcher(Config{Debug: true, Types: []string{"example.com/testdedup.MyType"}})
+
+	tc1 := m.classify(named)
+	tc2 := m.classify(namedOther)
+
+	log.SetOutput(os.Stderr)
+
+	// Verify both calls returned correct classification.
+	for i, tc := range []*typeClass{tc1, tc2} {
+		if !tc.fmtFormatter {
+			t.Errorf("classify call %d: expected Formatter=true, got false", i+1)
+		}
+	}
+
+	// Verify only one debug line was printed, not two.
+	output := strings.TrimSpace(buf.String())
+	lines := strings.Split(output, "\n")
+	var debugLines int
+	for _, line := range lines {
+		if strings.Contains(line, "sensitive type") {
+			debugLines++
+		}
+	}
+	if debugLines != 1 {
+		t.Errorf("expected exactly 1 debug line, got %d\nfull output:\n%s", debugLines, output)
+	}
 }

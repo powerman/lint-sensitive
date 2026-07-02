@@ -31,6 +31,32 @@ func levelCheck(c typeClass) requires {
 	}
 }
 
+// typeRef records a reference to a configured safe type found in an analysis pass.
+type typeRef struct {
+	pos   token.Pos
+	named *types.Named
+}
+
+// collectType validates an object from Defs/Uses and appends it to refs
+// if it matches a configured safe type and is not already seen.
+func (m matcher) collectType(
+	obj types.Object,
+	pos token.Pos,
+	seen map[*types.Named]bool,
+	refs []typeRef,
+) []typeRef {
+	tn, ok := obj.(*types.TypeName)
+	if !ok {
+		return refs
+	}
+	named, ok := tn.Type().(*types.Named)
+	if !ok || !m.isSensitiveNamed(named) || seen[named] {
+		return refs
+	}
+	seen[named] = true
+	return append(refs, typeRef{pos: pos, named: named})
+}
+
 // runReliabilityLevels checks all configured safe types found in the analyzed package
 // against user-selected reliability-level flags
 // and emits diagnostics for any that do not meet the required protection level.
@@ -53,43 +79,21 @@ func (m matcher) runReliabilityLevels(pass *analysis.Pass) {
 	}
 
 	// Collect all references to configured safe types with their positions.
-	type ref struct {
-		pos   token.Pos
-		named *types.Named
-	}
-	var refs []ref
+	var refs []typeRef
 	seen := make(map[*types.Named]bool)
 
 	// Local type declarations.
 	for id, obj := range pass.TypesInfo.Defs {
-		tn, ok := obj.(*types.TypeName)
-		if !ok {
-			continue
-		}
-		named, ok := tn.Type().(*types.Named)
-		if !ok || !m.isSensitiveNamed(named) || seen[named] {
-			continue
-		}
-		seen[named] = true
-		refs = append(refs, ref{pos: id.Pos(), named: named})
+		refs = m.collectType(obj, id.Pos(), seen, refs)
 	}
 
 	// External type references.
 	for id, obj := range pass.TypesInfo.Uses {
-		tn, ok := obj.(*types.TypeName)
-		if !ok {
-			continue
-		}
-		named, ok := tn.Type().(*types.Named)
-		if !ok || !m.isSensitiveNamed(named) || seen[named] {
-			continue
-		}
-		seen[named] = true
-		refs = append(refs, ref{pos: id.Pos(), named: named})
+		refs = m.collectType(obj, id.Pos(), seen, refs)
 	}
 
 	// Sort by position for deterministic diagnostic placement.
-	slices.SortFunc(refs, func(a, b ref) int { return cmp.Compare(a.pos, b.pos) })
+	slices.SortFunc(refs, func(a, b typeRef) int { return cmp.Compare(a.pos, b.pos) })
 
 	for _, r := range refs {
 		m.emitLevelDiagnostics(pass, r.pos, r.named, demanded)
