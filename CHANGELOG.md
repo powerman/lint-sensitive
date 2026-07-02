@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-02
+
+### 🐛 Fixed
+
+- Skip interface types when using package-only safe-type entries by @powerman in [beeb62f]
+- Also skip unexported types in package-only safe-type entries by @powerman in [a8eb683]
+
+[0.3.1]: https://github.com/powerman/lint-sensitive/compare/v0.3.0..v0.3.1
+[beeb62f]: https://github.com/powerman/lint-sensitive/commit/beeb62f030ae21d253d5f99690febb8f9b5e5e45
+[a8eb683]: https://github.com/powerman/lint-sensitive/commit/a8eb683e189579aa2b9ba44d6bf7df21d9bdfb9a
+
 ## [0.3.0] - 2026-07-02
 
 ### 🚀 Added
