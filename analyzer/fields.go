@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"fmt"
 	"go/ast"
 	"go/types"
 
@@ -25,6 +26,26 @@ func newFieldsAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis
 	}
 }
 
+// formatDiagnostic builds the diagnostic message for a field that leaks
+// through a disabled Formatter/Stringer/GoStringer path.
+func formatDiagnostic(field *types.Var, factor *disableFactor) string {
+	var behind string
+	switch factor.kind {
+	case factorUnexportedField:
+		behind = fmt.Sprintf("unexported field %q", factor.name)
+	case factorNonFormatterPointer:
+		behind = fmt.Sprintf("non-Formatter pointer to %s", factor.name)
+	default:
+		behind = factor.kind
+	}
+	return fmt.Sprintf(
+		"sensitive field %q is reachable behind a %s; "+
+			"the safe type's fmt.Formatter/Stringer/GoStringer then does not fire "+
+			"and the field is not structurally protected "+
+			"— fmt can print its secret content",
+		field.Name(), behind)
+}
+
 // runFields is the shared core used by both flag-driven and New()-based fields analyzers.
 func runFields(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
@@ -44,16 +65,17 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 			return
 		}
 		for f := range st2.Fields() {
-			if f.Exported() {
-				continue
-			}
 			if !m.shouldCheck(pass, f.Pos()) {
 				continue
 			}
-			if m.containsSensitive(f.Type(), make(map[types.Type]bool)) {
-				pass.Reportf(f.Pos(),
-					"sensitive value in unexported field %q is leaked by fmt: reflection bypasses its redaction",
-					f.Name())
+			var factor disableFactor
+			fd := !f.Exported()
+			if fd {
+				factor = disableFactor{kind: "unexportedField", name: f.Name()}
+			}
+			if m.walk(f.Type(), fd, false, make(map[types.Type]bool), &factor) {
+				msg := formatDiagnostic(f, &factor)
+				pass.Report(analysis.Diagnostic{Pos: f.Pos(), Message: msg})
 			}
 		}
 	})

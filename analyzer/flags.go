@@ -51,6 +51,8 @@ func init() { //nolint:gochecknoinits // Required for flag registration.
 		"Do not report diagnostics in _test.go files")
 	FlagAnalyzer.Flags.Bool("skip-generated", false,
 		"Do not report diagnostics in generated files (Code generated ... DO NOT EDIT)")
+	FlagAnalyzer.Flags.Bool("debug", false,
+		"Print sensitive type classification to stderr")
 }
 
 func matcherFromFlag(pass *analysis.Pass) (matcher, error) {
@@ -74,11 +76,16 @@ func runFlag(pass *analysis.Pass) (any, error) {
 	if f := pass.Analyzer.Flags.Lookup("skip-generated"); f != nil {
 		skipGenerated = f.Value.String() == trueStr
 	}
+	debug := false
+	if f := pass.Analyzer.Flags.Lookup("debug"); f != nil {
+		debug = f.Value.String() == trueStr
+	}
 	return newMatcher(Config{
 		Types:          splitCSV(typesFlag.Value.String()),
 		NoDefaultTypes: noDefaults,
 		SkipTests:      skipTests,
 		SkipGenerated:  skipGenerated,
+		Debug:          debug,
 	}), nil
 }
 

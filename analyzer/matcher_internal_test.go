@@ -1,24 +1,61 @@
 package analyzer
 
 import (
+	"bytes"
 	"go/token"
 	"go/types"
+	"log"
+	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
 )
 
+// wantDefaultPackages and wantDefaultTypes are the expected classification of
+// defaultTypes into package-only and type-qualified entries. They are spelled out
+// independently of addEntry (rather than re-deriving them with the same parse rule)
+// so the tests can catch a misclassified or malformed default entry.
+// Keep in sync with defaultTypes in analyzer.go; the guard in TestNewMatcherDefaults
+// fails if a default is added or removed without updating these.
+var (
+	wantDefaultPackages = []string{
+		"github.com/powerman/sensitive",
+		"github.com/go-playground/sensitive",
+	}
+	wantDefaultTypes = []packageType{
+		{Pkg: "github.com/negrel/secrecy", Name: "Secret"},
+		{Pkg: "github.com/angusgmorrison/logfusc", Name: "Secret"},
+	}
+)
+
 func TestNewMatcherDefaults(t *testing.T) {
 	t.Parallel()
+
+	if len(wantDefaultPackages)+len(wantDefaultTypes) != len(defaultTypes) {
+		t.Fatalf("test expectations out of sync with defaultTypes (%d entries): "+
+			"update wantDefaultPackages/wantDefaultTypes", len(defaultTypes))
+	}
+
 	m := newMatcher(Config{})
-	for _, p := range defaultTypes {
+
+	if len(m.packages) != len(wantDefaultPackages) {
+		t.Errorf("got %d packages, want %d", len(m.packages), len(wantDefaultPackages))
+	}
+	if len(m.types) != len(wantDefaultTypes) {
+		t.Errorf("got %d types, want %d", len(m.types), len(wantDefaultTypes))
+	}
+
+	for _, p := range wantDefaultPackages {
 		if !m.packages[p] {
-			t.Errorf("default package %s missing from matcher.packages", p)
+			t.Errorf("default package %q missing from matcher.packages", p)
 		}
 	}
-	if len(m.types) != 0 {
-		t.Errorf("expected empty matcher.types from defaults alone, got %d entries", len(m.types))
+	for _, pt := range wantDefaultTypes {
+		if !m.types[pt] {
+			t.Errorf("default type %q missing from matcher.types", pt.Pkg+"."+pt.Name)
+		}
 	}
 }
 
@@ -61,12 +98,16 @@ func TestNewMatcherNoDefaultsWithCustom(t *testing.T) {
 func TestNewMatcherOverlap(t *testing.T) {
 	t.Parallel()
 	m := newMatcher(Config{Types: []string{defaultTypes[0]}})
-	if len(m.packages) != len(defaultTypes) {
+
+	// defaultTypes[0] is a package-only entry already in defaults.
+	// Adding it again should not change the set at all.
+	if len(m.packages) != len(wantDefaultPackages) {
 		t.Errorf("overlap with defaults grew the set: got %d packages, want %d",
-			len(m.packages), len(defaultTypes))
+			len(m.packages), len(wantDefaultPackages))
 	}
-	if len(m.types) != 0 {
-		t.Errorf("expected empty types, got %d entries", len(m.types))
+	if len(m.types) != len(wantDefaultTypes) {
+		t.Errorf("overlap with defaults grew the set: got %d types, want %d",
+			len(m.types), len(wantDefaultTypes))
 	}
 }
 
@@ -253,4 +294,269 @@ func TestSplitCSV(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestIsQualifier covers all qualifier and non-qualifier kinds.
+func TestIsQualifier(t *testing.T) {
+	t.Parallel()
+
+	pkg := types.NewPackage("test", "test")
+
+	// Construct named types used for named-wrapper-over-qualifier tests.
+	namedPtr := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Np", nil),
+		types.NewPointer(types.Typ[types.Int]),
+		nil,
+	)
+	iface := types.NewInterfaceType(nil, nil)
+	namedIface := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Ni", nil),
+		iface,
+		nil,
+	)
+	iface.Complete()
+	namedFunc := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Nf", nil),
+		types.NewSignatureType(nil, nil, nil, nil, nil, false),
+		nil,
+	)
+	namedChan := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Nc", nil),
+		types.NewChan(types.SendRecv, types.Typ[types.Int]),
+		nil,
+	)
+	namedUnsafePtr := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Nup", nil),
+		types.Typ[types.UnsafePointer],
+		nil,
+	)
+	namedStruct := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Ns", nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+
+	// Empty interface type for *interface{} test.
+	emptyIface := types.NewInterfaceType(nil, nil)
+	emptyIface.Complete()
+
+	tests := []struct {
+		name string
+		typ  types.Type
+		want bool
+		plan string
+	}{
+		// Qualifiers
+		{name: "**T", typ: types.NewPointer(types.NewPointer(types.Typ[types.String])), want: true, plan: "*Pointer→*Pointer"},
+		{name: "*interface{}", typ: types.NewPointer(emptyIface), want: true, plan: "*Pointer→*Interface"},
+		{name: "*string", typ: types.NewPointer(types.Typ[types.String]), want: true, plan: "*Pointer→*Basic"},
+		{name: "*int", typ: types.NewPointer(types.Typ[types.Int]), want: true, plan: "*Pointer→*Basic"},
+		{name: "*bool", typ: types.NewPointer(types.Typ[types.Bool]), want: true, plan: "*Pointer→*Basic"},
+		{name: "chan T", typ: types.NewChan(types.SendRecv, types.Typ[types.String]), want: true, plan: "Chan"},
+		{name: "func()", typ: types.NewSignatureType(nil, nil, nil, nil, nil, false), want: true, plan: "Signature"},
+		{name: "unsafe.Pointer", typ: types.Typ[types.UnsafePointer], want: true, plan: "UnsafePointer"},
+		// Named wrapper over qualifier (*Pointer→*Named→qualifier-underlying)
+		{name: "*Np (underlying *int)", typ: types.NewPointer(namedPtr), want: true, plan: "*Pointer→*Named→*Pointer"},
+		{name: "*Ni (underlying *interface{})", typ: types.NewPointer(namedIface), want: true, plan: "*Pointer→*Named→*Interface"},
+		{name: "*Nf (underlying func())", typ: types.NewPointer(namedFunc), want: true, plan: "*Pointer→*Named→*Signature"},
+		{name: "*Nc (underlying chan int)", typ: types.NewPointer(namedChan), want: true, plan: "*Pointer→*Named→*Chan"},
+		{name: "*Nup (underlying unsafe.Pointer)", typ: types.NewPointer(namedUnsafePtr), want: true, plan: "*Pointer→*Named→*UnsafePointer"},
+		// Non-qualifiers
+		{name: "*[]byte (compound)", typ: types.NewPointer(types.NewSlice(types.Typ[types.Uint8])), want: false, plan: "*Pointer→*<compound> — *[]byte is NOT a qualifier"},
+		{name: "*struct{} (compound)", typ: types.NewPointer(types.NewStruct(nil, nil)), want: false, plan: "*Pointer→*<compound>"},
+		{name: "*[]int (compound)", typ: types.NewPointer(types.NewSlice(types.Typ[types.Int])), want: false, plan: "*Pointer→*<compound>"},
+		{name: "*map[int]int (compound)", typ: types.NewPointer(types.NewMap(types.Typ[types.Int], types.Typ[types.Int])), want: false, plan: "*Pointer→*<compound>"},
+		{name: "struct{} (not a pointer)", typ: types.NewStruct(nil, nil), want: false, plan: "non-pointer → false (default)"},
+		{name: "*Ns (underlying struct{})", typ: types.NewPointer(namedStruct), want: false, plan: "*Pointer→*Named→default (underlying struct) — named wrapper over non-qualifier"},
+	}
+
+	m := newMatcher(Config{NoDefaultTypes: true})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := m.isQualifier(tt.typ)
+			if got != tt.want {
+				t.Errorf("isQualifier(%v) = %v, want %v (plan: %s)", tt.typ, got, tt.want, tt.plan)
+			}
+		})
+	}
+}
+
+// TestIsStructurallySafe covers the isStructurallySafe function cases.
+func TestIsStructurallySafe(t *testing.T) {
+	t.Parallel()
+
+	pkg := types.NewPackage("test", "test")
+
+	// Named struct with qualifier: type R struct{ pp **int }
+	namedStructQual := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "R", nil),
+		types.NewStruct(
+			[]*types.Var{
+				types.NewField(token.NoPos, pkg, "pp", types.NewPointer(types.NewPointer(types.Typ[types.Int])), false),
+			},
+			nil,
+		),
+		nil,
+	)
+
+	// Wrapper type for named-wrapper recursion (Handle[string] shape):
+	// type Inner struct{ value *int }
+	innerNamed := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Inner", nil),
+		types.NewStruct(
+			[]*types.Var{
+				types.NewField(token.NoPos, pkg, "value", types.NewPointer(types.Typ[types.Int]), false),
+			},
+			nil,
+		),
+		nil,
+	)
+
+	// Recursive type cycle: type Node struct{ self Node; p **int }
+	// Must use SetUnderlying after creation because the struct references Node itself.
+	nodeNamed := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Node", nil),
+		nil, nil,
+	)
+	nodeStruct := types.NewStruct(
+		[]*types.Var{
+			types.NewField(token.NoPos, pkg, "self", nodeNamed, false),
+			types.NewField(token.NoPos, pkg, "p", types.NewPointer(types.NewPointer(types.Typ[types.Int])), false),
+		},
+		nil,
+	)
+	nodeNamed.SetUnderlying(nodeStruct)
+
+	m := newMatcher(Config{NoDefaultTypes: true})
+	tests := []struct {
+		name string
+		typ  types.Type
+		want bool
+		plan string
+	}{
+		{
+			name: "plain_struct_with_qualifier",
+			typ: types.NewStruct(
+				[]*types.Var{
+					types.NewField(token.NoPos, pkg, "p", types.NewPointer(types.NewPointer(types.Typ[types.Int])), false),
+				},
+				nil,
+			),
+			want: true,
+			plan: "struct field **int is a qualifier → true",
+		},
+		{
+			name: "plain_struct_only_non_qualifier",
+			typ: types.NewStruct(
+				[]*types.Var{
+					types.NewField(token.NoPos, pkg, "s", types.NewSlice(types.Typ[types.Int]), false),
+				},
+				nil,
+			),
+			want: false,
+			plan: "struct field []int is NOT a qualifier → false",
+		},
+		{
+			name: "named_struct_with_qualifier",
+			typ:  namedStructQual,
+			want: true,
+			plan: "named struct (*types.Named case) → recurse into underlying → qualifier field → true",
+		},
+		{
+			name: "named_wrapper_recursion_handle_shape",
+			typ: types.NewStruct(
+				[]*types.Var{
+					types.NewField(token.NoPos, pkg, "h", innerNamed, false),
+				},
+				nil,
+			),
+			want: true,
+			plan: "struct field is named wrapper Inner with *int qualifier inside → recurse through named field → true (Handle[string] shape)",
+		},
+		{
+			name: "recursive_type_cycle",
+			typ:  nodeNamed,
+			want: true,
+			plan: "named with self-referencing struct field → visited cycle-break prevents infinite loop → true via **int qualifier",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			visited := make(map[types.Type]bool)
+			got := m.isStructurallySafe(tt.typ, visited)
+			if got != tt.want {
+				t.Errorf("isStructurallySafe(%v) = %v, want %v (plan: %s)", tt.typ, got, tt.want, tt.plan)
+			}
+		})
+	}
+}
+
+// TestDebugFlag verifies that -sensitive.debug outputs classification details
+// when enabled and produces no output when disabled.
+func TestDebugFlag(t *testing.T) {
+	t.Parallel()
+
+	testPkg := types.NewPackage("example.com/secret", "secret")
+	named := types.NewNamed(
+		types.NewTypeName(token.NoPos, testPkg, "Secret", nil),
+		types.NewStruct(nil, nil),
+		nil,
+	)
+	// Add a Format method so classify sets fmtFormatter = true.
+	recv := types.NewVar(token.NoPos, testPkg, "", named)
+	params := types.NewTuple(
+		types.NewVar(token.NoPos, nil, "s", types.Typ[types.Uintptr]),
+		types.NewVar(token.NoPos, nil, "v", types.Typ[types.Rune]),
+	)
+	formatFunc := types.NewFunc(
+		token.NoPos, testPkg, "Format",
+		types.NewSignatureType(recv, nil, nil, params, nil, false),
+	)
+	named.AddMethod(formatFunc)
+
+	// Verify classification output appears when debug flag is enabled.
+	var bufTrue bytes.Buffer
+	log.SetOutput(&bufTrue)
+	mTrue := newMatcher(Config{Debug: true, Types: []string{"example.com/secret.Secret"}})
+	mTrue.classify(named)
+	log.SetOutput(os.Stderr)
+
+	output := bufTrue.String()
+	if output == "" {
+		t.Fatal("debug output expected when debug=true but got empty")
+	}
+	for _, want := range []string{
+		"sensitive type",
+		"example.com/secret.Secret",
+		"Formatter=true",
+		"Stringer=",
+		"GoStringer=",
+		"json.Marshaler=",
+		"encoding.TextMarshaler=",
+		"structurallySafe=",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("debug output should contain %q, got:\n%s", want, output)
+		}
+	}
+
+	// Verify no output appears when debug flag is disabled.
+	var bufFalse bytes.Buffer
+	log.SetOutput(&bufFalse)
+	mFalse := newMatcher(Config{Debug: false, Types: []string{"example.com/secret.Secret"}})
+	mFalse.classify(named)
+	log.SetOutput(os.Stderr)
+
+	if bufFalse.Len() > 0 {
+		t.Errorf("expected no debug output when debug=false, got:\n%s", bufFalse.String())
+	}
+
+	// typeArgsString remains uncovered because there is no public go/types API
+	// to set TypeArgs on a *types.Named programmatically (SetTypeArgs does not
+	// exist, and TypeList has no public constructor). Covering this function
+	// would require the full type-checker and a generic source file, which is
+	// impractical for a unit test.
 }

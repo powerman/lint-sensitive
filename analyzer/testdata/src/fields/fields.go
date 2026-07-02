@@ -9,6 +9,16 @@ import (
 	. "fakesensitive"
 )
 
+// SomeStruct is a simple struct used as a type parameter.
+type SomeStruct struct {
+	s string
+}
+
+// inner is a struct containing a sensitive field, without fmt interfaces.
+type inner struct {
+	secret fakesensitive.String // want "is reachable behind a"
+}
+
 // exportedOK tests that exported fields of a sensitive type are NOT flagged.
 type exportedOK struct {
 	X fakesensitive.String
@@ -16,116 +26,130 @@ type exportedOK struct {
 
 type directFakeSensitive struct {
 	// An unexported field of a sensitive type should be flagged.
-	x fakesensitive.String // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	x fakesensitive.String // want "is reachable behind a"
 }
 
 type directFakePlayground struct {
-	x fakeplayground.String // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	x fakeplayground.String // want "is reachable behind a"
 }
 
 type directFakeLogfusc struct {
-	x fakelogfusc.Secret[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	x fakelogfusc.Secret[string] // want "is reachable behind a"
 }
 
 type directFakeSecrecy struct {
-	x fakesecrecy.Secret[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	x fakesecrecy.Secret[string] // want "is reachable behind a"
 }
 
+// SecretString is not itself a configured safe type, but its inner
+// fakesecrecy.Secret[[]byte] field is — so the walk catches it transitively.
 type directFakeSecrecyString struct {
-	x fakesecrecy.SecretString // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	x fakesecrecy.SecretString // want "is reachable behind a"
 }
 
 // Slice variant.
 type sliceField struct {
-	xs []fakesensitive.String // want "sensitive value in unexported field \"xs\" is leaked by fmt"
+	xs []fakesensitive.String // want "is reachable behind a"
 }
 
 // Array variant.
 type arrayField struct {
-	xs [3]fakesensitive.String // want "sensitive value in unexported field \"xs\" is leaked by fmt"
+	xs [3]fakesensitive.String // want "is reachable behind a"
 }
 
-// Pointer variant.
+// Pointer variant — *fakesensitive.String is *<non-compound>.
+// Even under badVerb fmt never dereferences it — the address is printed.
 type pointerField struct {
-	px *fakesensitive.String // want "sensitive value in unexported field \"px\" is leaked by fmt"
+	px *fakesensitive.String // No diagnostic: *<non-compound> is safe under badVerb.
 }
 
 // Map key variant.
 type mapKeyField struct {
-	m map[fakesensitive.String]int // want "sensitive value in unexported field \"m\" is leaked by fmt"
+	m map[fakesensitive.String]int // want "is reachable behind a"
 }
 
 // Map value variant.
 type mapValueField struct {
-	m map[int]fakesensitive.String // want "sensitive value in unexported field \"m\" is leaked by fmt"
+	m map[int]fakesensitive.String // want "is reachable behind a"
 }
 
-// Chan variant.
+// Chan variant — channels print address, not content, so no leak.
 type chanField struct {
-	ch chan fakesensitive.String // want "sensitive value in unexported field \"ch\" is leaked by fmt"
+	ch chan fakesensitive.String
 }
 
 // RenamedImport tests detection with a renamed import alias.
 type renamedImport struct {
-	y fs.String // want "sensitive value in unexported field \"y\" is leaked by fmt"
+	y fs.String // want "is reachable behind a"
 }
 
 // DotImport tests detection with a dot-import.
 type dotImport struct {
-	z String // want "sensitive value in unexported field \"z\" is leaked by fmt"
+	z String // want "is reachable behind a"
 }
 
 // NestedTransitive tests transitive detection: an unexported struct field
 // whose type contains a sensitive field.
 type middleInner struct {
-	secret fakesensitive.String // want "sensitive value in unexported field \"secret\" is leaked by fmt"
+	secret fakesensitive.String // want "is reachable behind a"
 }
 
 type nestedTransitive struct {
-	inner middleInner // want "sensitive value in unexported field \"inner\" is leaked by fmt"
+	inner middleInner // want "is reachable behind a"
 }
 
 // RecursiveNode tests that recursive types don't hang and still detect
 // sensitive fields.
 type RecursiveNode struct {
-	next  *RecursiveNode // want "sensitive value in unexported field \"next\" is leaked by fmt"
-	inner middleInner    // want "sensitive value in unexported field \"inner\" is leaked by fmt"
+	next  *RecursiveNode // want "is reachable behind a"
+	inner middleInner    // want "is reachable behind a"
 }
 
 // RecursiveSensitive tests that a recursive type WITH a sensitive field
 // directly is still detected (no false negative from visited set).
 type recursiveSensitive struct {
-	self *recursiveSensitive // want "sensitive value in unexported field \"self\" is leaked by fmt"
-	x    fakesensitive.String // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	self *recursiveSensitive // want "is reachable behind a"
+	x    fakesensitive.String // want "is reachable behind a"
 }
 
-// InterfaceField tests that interface-typed unexported fields are NOT
-// flagged (cannot prove statically).
+// InterfaceField — interface-typed field is conservatively flagged
+// when reachable under a disable factor because the dynamic value
+// could be a safe type that would leak.
 type ifaceField struct {
-	v any
+	v any // want "is reachable behind a"
 }
 
-// BoxedField tests that a Boxed[T] struct field (double-pointer-backed)
+// RefField tests that a Ref[T] struct field (double-pointer-backed)
 // is NOT flagged as a leak — fmt reflection cannot reach the value.
-type BoxedField struct {
-	x fakesensitive.Boxed[string] // No diagnostic: Boxed is reflection-proof.
+type RefField struct {
+	x fakesensitive.Ref[string] // No diagnostic: Ref is reflection-proof.
 }
 
-// SinglePtrField tests that a single-pointer wrapper IS flagged —
-// fmt can dereference one pointer level.
-type SinglePtrField struct {
-	x fakesensitive.SinglePtr[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+// SinglePtrStringField — SinglePtr[string] has *string (a *<non-compound>)
+// which provides structural protection (structurallySafe=true).
+// SinglePtr has no fmt interfaces so it does not flag unconditionally;
+// a reliability check would also see it as safe.
+type SinglePtrStringField struct {
+	x fakesensitive.SinglePtr[string] // No diagnostic: structurallySafe, no fmt interfaces.
 }
 
-// FuncWrapField tests that a func-field wrapper IS flagged.
+// SinglePtrStructField — SinglePtr[SomeStruct] has *SomeStruct
+// (a *<compound>), so structurallySafe=false. SinglePtr has no fmt
+// interfaces, so the unconditional check does not flag it.
+// A reliability check would flag this as needing explicit fmt interfaces.
+type SinglePtrStructField struct {
+	x fakesensitive.SinglePtr[SomeStruct] // No diagnostic: reliability check territory (no fmt interfaces).
+}
+
+// FuncWrapField — FuncWrap implements no fmt interfaces,
+// so there is no interface to disable.
 type FuncWrapField struct {
-	x fakesensitive.FuncWrap[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	x fakesensitive.FuncWrap[string] // No diagnostic: no fmt interfaces.
 }
 
-// ChanWrapField tests that a channel-field wrapper IS flagged —
-// no double-pointer field means the struct is not safe.
+// ChanWrapField — ChanWrap implements no fmt interfaces.
 type ChanWrapField struct {
-	x fakesensitive.ChanWrap[string] // want "sensitive value in unexported field \"x\" is leaked by fmt"
+	x fakesensitive.ChanWrap[string] // No diagnostic: no fmt interfaces.
 }
 
 // DoublePtrAndOtherField tests that a struct with a double-pointer field
@@ -135,8 +159,56 @@ type DoublePtrAndOtherField struct {
 	x fakesensitive.DoublePtrAndOther[string] // No diagnostic: has **T field.
 }
 
-// OrderIndependent tests that detection works regardless of field order.
+// HandlePrimitiveField — Handle[string] has *string which is *<non-compound>,
+// providing structural protection (structurallySafe=true).
+// Even under a disabled path the content is safe.
+type HandlePrimitiveField struct {
+	x fakesensitive.Handle[string] // No diagnostic: structurallySafe.
+}
+
+// HandleStructField — Handle[SomeStruct] has *SomeStruct which is
+// *<compound>, so structurallySafe=false. Under a disabled path
+// the Format interface is bypassed and content leaks.
+type HandleStructField struct {
+	x fakesensitive.Handle[SomeStruct] // want "is reachable behind a"
+}
+
+// StarInnerExported — an exported *inner field: the pointer is
+// non-Formatter, so bp=true, disabling interfaces for the subtree.
+// The walk reaches fakesensitive.String inside inner and reports a leak.
+type StarInnerExported struct {
+	M *inner // want "is reachable behind a"
+}
+
+// StarInnerUnexported — an unexported *inner field: fd=true from
+// the field itself AND bp=true from the non-Formatter pointer.
+// inner is *<compound> (a struct), so badVerb dereferences it.
+// The safe type fakesensitive.String inside inner leaks.
+type StarInnerUnexported struct {
+	m *inner // want "is reachable behind a"
+}
+
+// WrapTPlayground is the playground reproducer:
+// an unexported pointer to a struct whose field is a Formatter type.
+// The non-Formatter pointer triggers badVerb, disabling interfaces,
+// and the Formatter type's content leaks.
+type WrapTPlayground struct {
+	t *outerT // want "is reachable behind a"
+}
+
+type outerT struct {
+	Secret fakesensitive.String
+}
+
+// StarStringClean — *fakesensitive.String on a clean (exported, no non-Formatter pointer)
+// path: the promoted value-receiver Format method is available on *String,
+// so handleMethods fires it before badVerb could trigger, making this a safe terminal.
+type StarStringClean struct {
+	P *fakesensitive.String // No diagnostic: clean path, promoted Format fires safely.
+}
+
+// orderIndependent tests that detection works regardless of field order.
 type orderIndependent struct {
 	First  int
-	second fakesensitive.String // want "sensitive value in unexported field \"second\" is leaked by fmt"
+	second fakesensitive.String // want "is reachable behind a"
 }

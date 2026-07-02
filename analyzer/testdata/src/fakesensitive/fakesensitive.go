@@ -11,14 +11,14 @@ func (s String) Format(f fmt.State, verb rune) {
 	fmt.Fprint(f, "[redacted]")
 }
 
-// Boxed wraps a value behind a double pointer,
+// Ref wraps a value behind a double pointer,
 // making it unreachable through fmt reflection.
-type Boxed[T any] struct {
+type Ref[T any] struct {
 	pp **T
 }
 
 // SinglePtr wraps a value behind a single pointer.
-// Unlike Boxed, this IS reachable by fmt reflection.
+// It does NOT implement any fmt interface (safe types that do are e.g. Handle).
 type SinglePtr[T any] struct {
 	p *T
 }
@@ -29,7 +29,6 @@ type FuncWrap[T any] struct {
 }
 
 // ChanWrap wraps a value behind a channel.
-// Without a double-pointer field this struct is not safe.
 type ChanWrap[T any] struct {
 	ch chan T
 }
@@ -40,4 +39,14 @@ type ChanWrap[T any] struct {
 type DoublePtrAndOther[T any] struct {
 	pp  **T
 	aux int
+}
+
+// Handle wraps a value behind a single pointer, like sensitive.Handle.
+// It implements fmt.Formatter to simulate real safe types.
+type Handle[T any] struct {
+	p *T
+}
+
+func (h Handle[T]) Format(f fmt.State, verb rune) {
+	fmt.Fprint(f, "[redacted]")
 }

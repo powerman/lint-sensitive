@@ -60,11 +60,11 @@ func TestExampleEndToEnd(t *testing.T) {
 	}
 	checks := []diagCheck{
 		// sensitivefields: 5 diagnostics (one per sensitive field in leakDemo).
-		{fragment: `sensitive value in unexported field "powerman"`, want: 1},
-		{fragment: `sensitive value in unexported field "playground"`, want: 1},
-		{fragment: `sensitive value in unexported field "secrecy"`, want: 1},
-		{fragment: `sensitive value in unexported field "logfusc"`, want: 1},
-		{fragment: `sensitive value in unexported field "secret"`, want: 1},
+		{fragment: `sensitive field "powerman"`, want: 1},
+		{fragment: `sensitive field "playground"`, want: 1},
+		{fragment: `sensitive field "secrecy"`, want: 1},
+		{fragment: `sensitive field "logfusc"`, want: 1},
+		{fragment: `sensitive field "secret"`, want: 1},
 		// sensitiveprint: 6 diagnostics (3 print + 3 println).
 		// Use trailing space to distinguish "print " from "println".
 		{fragment: `sensitive value passed to builtin print `, want: 3},
@@ -84,7 +84,7 @@ func TestExampleEndToEnd(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(outStr), "\n")
 	var diagLines int
 	for _, l := range lines {
-		if strings.Contains(l, ": sensitive value") {
+		if strings.Contains(l, "sensitive") {
 			diagLines++
 		}
 	}

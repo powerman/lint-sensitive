@@ -17,17 +17,39 @@ Go linter to detect sensitive value leaks via `fmt` reflection and builtin `prin
 ## Why
 
 Sensitive types (like `github.com/powerman/sensitive.String`) redact themselves
-via `fmt.Formatter`, `Stringer`, and `GoStringer`.
+via `fmt.Formatter`, `fmt.Stringer`, or `fmt.GoStringer`.
 But Go's `fmt` reaches struct fields by reflection,
-and a `reflect.Value` obtained from an **unexported** field has `CanInterface() == false`,
-so `fmt` skips `handleMethods` and prints the **raw** underlying value.
-The redaction is silently bypassed — secret leaks.
+and a `reflect.Value` obtained from an **unexported** field has `CanInterface() == false`.
+When `CanInterface()` is false, `fmt` skips `handleMethods`
+and prints the **raw** underlying value — the redaction is silently bypassed,
+and the secret leaks.
 
-The `flagRO` (read-only) bit propagates to ALL nested values reached through an unexported field,
-so even an **exported** sensitive field nested inside an unexported parent field leaks.
-That's why detection must be **transitive**.
+A sensitive type can protect its content in two ways:
 
-Builtin `print`/`println` also bypass redaction entirely (they never call any interface method).
+1. **Interfaces**: implementing `fmt.Formatter`, `fmt.Stringer`, or `fmt.GoStringer`.
+   These are honoured by `fmt` when the value is reachable
+   through a clean (exported, non-pointer-indirect) path.
+2. **Structural protection**: storing the secret behind indirections
+   that `fmt` never follows — `**T`, `*interface{}`, `chan T`, `func() T`,
+   `unsafe.Pointer`, or `*<non-compound>` (`*string`, `*int`, etc.).
+   These always print as an address or header regardless of verb.
+
+The linter uses **Formatter-termination reachability**:
+it walks struct fields and flags places where a path-disable factor
+(unexported field, non-Formatter pointer) would prevent the safe type's
+interfaces from firing, _and_ the type has no structural protection to fall back on.
+
+### What the linter checks
+
+- **Unconditional**: it warns when a safe type's
+  `fmt.Formatter`/`Stringer`/`GoStringer` protection
+  is disabled by a path-disable factor
+  (unexported field or non-Formatter pointer),
+  the type implements at least one of these interfaces,
+  and the type has no structural protection.
+- **Optional reliability levels (planned)**: a config-driven check
+  that warns when a safe type does not provide enough protection
+  for the configured attack surface.
 
 ### Example
 
@@ -68,7 +90,7 @@ lint-sensitive ./...
 
 By default, types from several sensitive-value libraries are recognized:
 `github.com/powerman/sensitive`, `github.com/go-playground/sensitive`,
-`github.com/negrel/secrecy`, and `github.com/angusgmorrison/logfusc`.
+`github.com/negrel/secrecy.Secret`, and `github.com/angusgmorrison/logfusc`.
 If you use other libraries or project-specific types, extend via the `-sensitive.types` flag:
 
 ```bash
@@ -130,10 +152,10 @@ analyzers := analyzer.New(analyzer.Config{
 
 Two analyzers are registered in the `lint-sensitive` binary:
 
-| Name              | Description                                                                                                          |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `sensitivefields` | Detects unexported struct fields whose type (transitively) contains sensitive values that leak via `fmt` reflection. |
-| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                 |
+| Name              | Description                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------ |
+| `sensitivefields` | Detects struct fields (exported AND unexported) where a safe type is reachable behind a path-disable factor. |
+| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                         |
 
 ## Fixing findings
 
@@ -159,24 +181,22 @@ type Config struct {
 > remaining invisible to static analysis.
 > Good for simple, local cases.
 
-### Option B: Box the secret behind indirection (recommended)
+### Option B: Use a structurally safe type (recommended)
 
 Store the secret in a type whose value is unreachable through `fmt` reflection.
-The [`sensitive.Boxed[T]`](https://github.com/powerman/sensitive) generic type
-holds its value behind a double pointer (`**T`), which `fmt` prints as an
-address and never dereferences.
+The `sensitive.Ref[T]` type holds its value behind a double pointer (`**T`),
+which `fmt` prints as an address and never dereferences.
+
+`sensitive.Handle[T]` is also structurally safe for primitive type parameters
+because it stores `*T` where `*<non-compound>` prints as an address.
 
 ```go
 import "github.com/powerman/sensitive"
 
 type config struct {
-    apiKey sensitive.Boxed[string] // safe — fmt cannot reach the string
+    apiKey sensitive.Ref[string] // safe — fmt cannot reach the string
 }
 ```
-
-`Boxed` is safe in every nesting scenario — behind unexported fields,
-interfaces, or any other indirection — because `fmt` never follows more than
-one pointer level, and `Boxed` stores the value behind two.
 
 ### When neither option applies
 

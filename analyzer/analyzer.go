@@ -2,7 +2,7 @@
 // through Go's fmt reflection and builtin print/println.
 //
 // By default, sensitive types are those defined in github.com/powerman/sensitive,
-// github.com/go-playground/sensitive, github.com/negrel/secrecy, and
+// github.com/go-playground/sensitive, github.com/negrel/secrecy.Secret, and
 // github.com/angusgmorrison/logfusc.
 package analyzer
 
@@ -15,8 +15,8 @@ import (
 var defaultTypes = []string{ // Const.
 	"github.com/powerman/sensitive",
 	"github.com/go-playground/sensitive",
-	"github.com/negrel/secrecy",
-	"github.com/angusgmorrison/logfusc",
+	"github.com/negrel/secrecy.Secret",
+	"github.com/angusgmorrison/logfusc.Secret",
 }
 
 // matcherFunc is the type of functions that retrieve a matcher from an analysis pass.
@@ -42,6 +42,10 @@ type Config struct {
 	// SkipGenerated, when true, suppresses diagnostics in generated files
 	// (those containing the standard "// Code generated ... DO NOT EDIT." header).
 	SkipGenerated bool
+
+	// Verbose flag enables diagnostic output to stderr
+	// showing the classification of each sensitive type.
+	Debug bool
 }
 
 // New returns analyzers configured by cfg.
