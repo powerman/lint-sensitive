@@ -97,6 +97,36 @@ func TestExampleEndToEnd(t *testing.T) {
 	}
 }
 
+func TestVersionFlag(t *testing.T) {
+	t.Parallel()
+
+	binary := buildBinary(t)
+
+	// -V=full must succeed and print "<progname> version <token> buildID=<hex>".
+	out, err := exec.CommandContext(context.Background(), binary, "-V=full").CombinedOutput()
+	if err != nil {
+		t.Fatalf("binary -V=full: %v\n%s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	// Expect at least: name, "version", a non-empty version token.
+	fields := strings.Fields(got)
+	if len(fields) < 3 || fields[1] != "version" || fields[2] == "" {
+		t.Fatalf("-V=full unexpected output: %q", got)
+	}
+	if !strings.HasPrefix(got, "lint-sensitive ") {
+		t.Fatalf("-V=full progname missing: %q", got)
+	}
+
+	// -V with an unsupported value must fail, not panic.
+	out, err = exec.CommandContext(context.Background(), binary, "-V=bogus").CombinedOutput()
+	if err == nil {
+		t.Fatalf("-V=bogus expected non-zero exit, got success:\n%s", out)
+	}
+	if !strings.Contains(string(out), "use -V=full") {
+		t.Fatalf("-V=bogus missing hint 'use -V=full':\n%s", out)
+	}
+}
+
 func buildBinary(t *testing.T) string {
 	t.Helper()
 
