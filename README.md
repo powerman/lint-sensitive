@@ -303,18 +303,25 @@ it always prints an address or header, regardless of the verb.
 The table below shows which protection surfaces (`-sensitive.require-*`)
 each type in the existing libraries provides (as of 2026-07-02).
 
-| Safe type                          | JSON | Text | fmt | `%#v` | `%v`/`%s` | Structural |
-| ---------------------------------- | ---- | ---- | --- | ----- | --------- | ---------- |
-| `powerman/sensitive.String`        | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
-| `powerman/sensitive.Ref[T]`        | ✓    | ✓    | ✓   | ✓     | ✓         | ✓²         |
-| `powerman/sensitive.Handle[T]`     | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
-| `go-playground/sensitive.String`   | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
-| `negrel/secrecy.Secret[T]`         | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
-| `angusgmorrison/logfusc.Secret[T]` | ✓    | ✗    | ✗   | ✓     | ✓         | ✗          |
+| Safe type                           | JSON | Text | fmt | `%#v` | `%v`/`%s` | Structural |
+| ----------------------------------- | ---- | ---- | --- | ----- | --------- | ---------- |
+| `powerman/sensitive.String`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
+| `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓²         |
+| `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
+| `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³⁴        |
+| `andrewbenton/go-secrets.Secret[T]` | ✓⁵   | ✗    | ✓   | ✓     | ✓         | ✓⁶         |
+| `go-playground/sensitive.String`    | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
+| `negrel/secrecy.Secret[T]`          | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
+| `angusgmorrison/logfusc.Secret[T]`  | ✓    | ✗    | ✗   | ✓     | ✓         | ✗          |
 
 ¹ — via `encoding.TextMarshaler`.<br/>
 ² — `**T` — double pointer, `fmt` never dereferences it.<br/>
-³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.
+³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.<br/>
+⁴ — `rsjethani/secret` stores the secret in a `*string`; its protection is therefore structural
+even though it also implements `Stringer`/`TextMarshaler`. It handles `string` only.<br/>
+⁵ — `go-secrets` marshals the zero value of `T`, so redaction is present but not configurable.<br/>
+⁶ — `go-secrets` stores the secret behind `func() T` closures, which `fmt` never dereferences.
+Note its `reflect.DeepEqual` is broken: non-nil funcs never compare equal.
 
 ### Flags
 
@@ -384,3 +391,28 @@ type config struct {
 - **Generated files** that cannot be edited: use `-sensitive.skip-generated`.
 - **Test fixtures** that hold fake data rather than real secrets:
   use `-sensitive.skip-tests`.
+
+## Related tools
+
+[`nilpoona/leakhound`](https://github.com/nilpoona/leakhound) is the closest other
+static analyzer, but it guards a different invariant and the two are complementary.
+
+leakhound is a data-flow (taint) analyzer: it tags fields with `sensitive:"true"`
+and tracks whether a tagged value reaches a _known_ logging sink
+(`slog`, `log`, `fmt`, and — via config — `zap`/`zerolog`/`logrus`),
+following assignments, parameters, and returns across functions and packages.
+It catches leaks even for a plain `string` that has no redaction of its own.
+
+lint-sensitive reasons about the _type and the access path_ instead of the sink.
+It answers a question leakhound does not model at all:
+"does the redaction this type relies on actually fire on this path,
+or does an unexported field / non-`Formatter` pointer silently disable it?"
+Consequently it also covers sinks leakhound cannot enumerate —
+`fmt.Errorf` into a `%w` chain, a custom `io.Writer`,
+a third-party library that logs internally, traces, and metrics.
+
+In short: leakhound is a static, sink-oriented blocklist
+(a compile-time cousin of runtime sanitizers like `masq`);
+lint-sensitive verifies the structural guarantee
+of self-redacting types on every path.
+Running both is reasonable.
