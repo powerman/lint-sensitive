@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-07-02
+
+### 🔔 Changed
+
+- Override -V=full flag to report real version instead of "devel" by @powerman in [289870c]
+
+### 🐛 Fixed
+
+- Handle .exe suffix in TestVersionFlag for Windows compat by @powerman in [e9f5968]
+
+### 📚 Documentation
+
+- Clean up footnotes in support table by @powerman in [3545780]
+
+[0.4.0]: https://github.com/powerman/lint-sensitive/compare/v0.3.3..v0.4.0
+[3545780]: https://github.com/powerman/lint-sensitive/commit/3545780da5d6e265c9c3e715beab48e8db3bd0a3
+[289870c]: https://github.com/powerman/lint-sensitive/commit/289870cefa4934f64d393f26dee6a1b6bcbd85ec
+[e9f5968]: https://github.com/powerman/lint-sensitive/commit/e9f5968c81b7c3820088663499aba58659856387
+
 ## [0.3.3] - 2026-07-02
 
 ### 🔔 Changed
