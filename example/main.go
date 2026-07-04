@@ -25,14 +25,13 @@ func (s Secret) Format(f fmt.State, verb rune) { fmt.Fprint(f, "[redacted]") }
 type Public string
 
 // leakDemo groups all leakable types as unexported fields.
-// Fields 1-5 are sensitive (caught by the linter). Field 6 is NOT sensitive
+// Fields 1-4 are sensitive (caught by the linter). Field 5 is NOT sensitive
 // and should NOT be flagged — demonstrating type-level granularity.
-// Fields 7-8 use [sensitive.Ref] and [sensitive.Handle] which protect
+// Fields 6-7 use [sensitive.Ref] and [sensitive.Handle] which protect
 // against fmt reflection — also NOT flagged.
 // When printed via fmt, all raw values leak because reflection on unexported
 // fields bypasses Stringer/Formatter.
 type leakDemo struct {
-	powerman   powermanSensitive.String   // leak:
 	playground playgroundSensitive.String // leak:
 	secrecy    *secrecy.Secret[string]    // leak:
 	logfusc    logfusc.Secret[string]     // leak:
@@ -45,7 +44,7 @@ type leakDemo struct {
 // innerStruct contains an unexported sensitive field.
 // Used to demonstrate leaks via exported pointer to a compound type.
 type innerStruct struct {
-	secret powermanSensitive.String
+	secret playgroundSensitive.String
 	public Public
 }
 
@@ -60,7 +59,6 @@ type leakViaPointer struct {
 func main() {
 	// Unexported field leak: all sensitive field values are printed raw.
 	fmt.Println(leakDemo{
-		powerman:   "value protected by powerman/sensitive.String",
 		playground: "value protected by go-playground/sensitive.String",
 		secrecy:    secrecy.NewSecret("value protected by negrel/secrecy.Secret"),
 		logfusc:    logfusc.NewSecret("value protected by logfusc.Secret"),
@@ -73,17 +71,12 @@ func main() {
 	// Pointer-to-compound leak: exported pointer field dereferences and leaks.
 	fmt.Println(leakViaPointer{
 		P: &innerStruct{
-			secret: "value protected by powerman/sensitive.String",
+			secret: "value protected by go-playground/sensitive.String",
 			public: "value protected by Public (not sensitive)",
 		},
 	})
 
 	// Builtin print/println also leak sensitive basic-kind-by-value types.
-	{
-		var s powermanSensitive.String = "value protected by powerman/sensitive.String"
-		print(s)   // leak:
-		println(s) // leak:
-	}
 	{
 		var s playgroundSensitive.String = "value protected by go-playground/sensitive.String"
 		print(s)   // leak:

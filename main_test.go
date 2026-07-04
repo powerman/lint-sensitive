@@ -59,20 +59,19 @@ func TestExampleEndToEnd(t *testing.T) {
 		want     int
 	}
 	checks := []diagCheck{
-		// sensitivefields: 7 diagnostics:
-		//   - 5 sensitive fields in leakDemo (unexported field leak)
+		// sensitivefields: 6 diagnostics:
+		//   - 4 sensitive fields in leakDemo (unexported field leak)
 		//   - 1 in innerStruct (reached via exported pointer dereference)
 		//   - 1 for the exported pointer itself (non-Formatter pointer to compound)
-		{fragment: `sensitive field "powerman"`, want: 1},
 		{fragment: `sensitive field "playground"`, want: 1},
 		{fragment: `sensitive field "secrecy"`, want: 1},
 		{fragment: `sensitive field "logfusc"`, want: 1},
 		{fragment: `sensitive field "secret"`, want: 2},
 		{fragment: `sensitive field "P"`, want: 1},
-		// sensitiveprint: 6 diagnostics (3 print + 3 println).
+		// sensitiveprint: 4 diagnostics (2 print + 2 println).
 		// Use trailing space to distinguish "print " from "println".
-		{fragment: `sensitive value passed to builtin print `, want: 3},
-		{fragment: `sensitive value passed to builtin println`, want: 3},
+		{fragment: `sensitive value passed to builtin print `, want: 2},
+		{fragment: `sensitive value passed to builtin println`, want: 2},
 	}
 	totalWant := 0
 	for _, c := range checks {

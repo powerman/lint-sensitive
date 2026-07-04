@@ -15,7 +15,7 @@ Go linter to detect sensitive value leaks via `fmt` reflection and builtin `prin
 
 ## What this linter is for
 
-A sensitive type (like `github.com/powerman/sensitive.String`) exists to keep a
+A sensitive type (like `github.com/go-playground/sensitive.String`) exists to keep a
 secret out of your logs and error messages.
 Using one sets up an expectation:
 "if this value is ever printed, it shows `[REDACTED]`, not the secret."
@@ -63,9 +63,11 @@ disable it.
 
 ### An unexported field on the path
 
-A config with an exported `sensitive.String` prints redacted:
+A config with an exported `go-playground/sensitive.String` prints redacted:
 
 ```go
+import "github.com/go-playground/sensitive"
+
 type Config struct {
     APIKey sensitive.String
 }
@@ -95,6 +97,8 @@ Under some verbs (e.g. `%#v`) `fmt` dereferences the pointer and reflects into
 the fields with interface dispatch turned off:
 
 ```go
+import "github.com/go-playground/sensitive"
+
 type Credentials struct {
     token sensitive.String
 }
@@ -123,6 +127,8 @@ session.go:2: sensitive field "Creds" is reachable behind a non-Formatter pointe
 These bypass redaction unconditionally, no wrapper needed:
 
 ```go
+import "github.com/go-playground/sensitive"
+
 var s sensitive.String = "s3cr3t"
 println(s) // s3cr3t — Stringer/Formatter is never consulted
 ```
@@ -300,11 +306,10 @@ it always prints an address or header, regardless of the verb.
 ### Existing library support
 
 The table below shows which protection surfaces (`-sensitive.require-*`)
-each type in the existing libraries provides (as of 2026-07-02).
+each type in the existing libraries provides (as of 2026-07-04).
 
 | Safe type                           | JSON | Text | fmt | `%#v` | `%v`/`%s` | Structural |
 | ----------------------------------- | ---- | ---- | --- | ----- | --------- | ---------- |
-| `powerman/sensitive.String`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
 | `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓²         |
 | `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
 | `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
@@ -353,6 +358,8 @@ secret field exported. This ensures `fmt` honours the sensitive type's own
 `fmt.Formatter`, `Stringer`, or `GoStringer` redaction.
 
 ```go
+import "github.com/go-playground/sensitive"
+
 type Config struct {
     APIKey sensitive.String // exported — redacted by fmt
 }
