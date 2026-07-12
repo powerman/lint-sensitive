@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"os"
 	"os/exec"
@@ -16,7 +15,7 @@ func TestFlagsExposeSensitiveTypes(t *testing.T) {
 
 	binary := buildBinary(t)
 
-	cmd := exec.CommandContext(context.Background(), binary, "-flags")
+	cmd := exec.CommandContext(t.Context(), binary, "-flags")
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("binary -flags: %v\n%s", err, out)
@@ -33,7 +32,7 @@ func TestExampleEndToEnd(t *testing.T) {
 	binary := buildBinary(t)
 	exampleDir := filepath.Join(repoRoot(t), "example")
 
-	cmd := exec.CommandContext(context.Background(), binary,
+	cmd := exec.CommandContext(t.Context(), binary,
 		"-sensitive.types=github.com/powerman/lint-sensitive/example.Secret",
 		".",
 	)
@@ -102,7 +101,7 @@ func TestVersionFlag(t *testing.T) {
 	binary := buildBinary(t)
 
 	// -V=full must succeed and print "<progname> version <token> buildID=<hex>".
-	out, err := exec.CommandContext(context.Background(), binary, "-V=full").CombinedOutput()
+	out, err := exec.CommandContext(t.Context(), binary, "-V=full").CombinedOutput()
 	if err != nil {
 		t.Fatalf("binary -V=full: %v\n%s", err, out)
 	}
@@ -117,7 +116,7 @@ func TestVersionFlag(t *testing.T) {
 	}
 
 	// -V with an unsupported value must fail, not panic.
-	out, err = exec.CommandContext(context.Background(), binary, "-V=bogus").CombinedOutput()
+	out, err = exec.CommandContext(t.Context(), binary, "-V=bogus").CombinedOutput()
 	if err == nil {
 		t.Fatalf("-V=bogus expected non-zero exit, got success:\n%s", out)
 	}
@@ -134,7 +133,7 @@ func buildBinary(t *testing.T) string {
 	if runtime.GOOS == "windows" {
 		binary += ".exe"
 	}
-	cmd := exec.CommandContext(context.Background(), "go", "build", "-o", binary, ".")
+	cmd := exec.CommandContext(t.Context(), "go", "build", "-o", binary, ".")
 	cmd.Dir = dir
 	cmd.Stderr = os.Stderr
 	err := cmd.Run()
