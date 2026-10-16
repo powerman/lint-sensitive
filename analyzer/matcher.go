@@ -94,9 +94,7 @@ func newMatcher(cfg Config) matcher {
 // addEntry adds one entry to the matcher,
 // determining whether it is a plain package path or a package.Type combination.
 func (m matcher) addEntry(entry string) {
-	if i := strings.LastIndex(entry, "."); i >= 0 {
-		tail := entry[i+1:]
-		head := entry[:i]
+	if head, tail, ok := strings.CutLast(entry, "."); ok {
 		if head != "" && tail != "" && unicode.IsUpper(rune(tail[0])) {
 			m.types[packageType{Pkg: head, Name: tail}] = true
 			return
