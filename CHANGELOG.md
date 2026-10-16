@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-16
+
+### 🚀 Added
+
+- Add Go 1.27 support by @powerman in [0dcd224]
+
+### 📚 Documentation
+
+- Update examples and support table for powerman/sensitive v0.6.0 by @powerman in [33168b1]
+
+[0.5.0]: https://github.com/powerman/lint-sensitive/compare/v0.4.0..v0.5.0
+[33168b1]: https://github.com/powerman/lint-sensitive/commit/33168b1bfbd5ed661179b32b79a12c270981fe94
+[0dcd224]: https://github.com/powerman/lint-sensitive/commit/0dcd224be68ac6ae05407e6c6acc66e2d8a40167
+
 ## [0.4.0] - 2026-07-02
 
 ### 🔔 Changed
