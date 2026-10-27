@@ -1,6 +1,6 @@
 module github.com/powerman/lint-sensitive/example
 
-go 1.26.4
+go 1.27.3
 
 require (
 	github.com/angusgmorrison/logfusc v0.1.0
