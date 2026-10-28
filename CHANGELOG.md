@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-10-28
+
+### 🐛 Fixed
+
+- **(example)** Build with Go 1.27.3 by @powerman in [87937a7]
+- Build with Go 1.27.3 by @powerman in [a00e9c1]
+
+### 📦️ Dependencies
+
+- **(deps)** Upgrade go and golangci-lint by @powerman in [eeafde6]
+- **(deps)** Mise up by @powerman in [abcc21f]
+
+[0.5.1]: https://github.com/powerman/lint-sensitive/compare/v0.5.0..v0.5.1
+[eeafde6]: https://github.com/powerman/lint-sensitive/commit/eeafde676f71891d7f3c32166aef1e0eafd12592
+[a00e9c1]: https://github.com/powerman/lint-sensitive/commit/a00e9c1290c572ea4057c41c174df61684242577
+[87937a7]: https://github.com/powerman/lint-sensitive/commit/87937a7a0883c7e54e95e0a295b072666f841cdc
+[abcc21f]: https://github.com/powerman/lint-sensitive/commit/abcc21f833aebe169bb61ac0f74e499b40b66f27
+
 ## [0.5.0] - 2026-10-16
 
 ### 🚀 Added
