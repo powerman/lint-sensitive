@@ -611,7 +611,9 @@ func leakStep(named *types.Named) walkStep {
 // under the given fd/bp (format-disabled / bad-verb-possible) state.
 // visited prevents infinite recursion on cyclic types;
 // it is keyed by the fd/bp state too, because a type is safe or leaking depending on it.
-// factorAt must not be nil; it receives the first disable factor on the path, if any.
+// factorAt must not be nil;
+// when walk returns true, it holds the first disable factor on the path, if any.
+// It is left unchanged when walk returns false.
 // When walk returns true, path receives the hops of the leaking path
 // ordered from the innermost (the safe type) to the outermost,
 // excluding the walked type itself.
@@ -655,12 +657,16 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		}
 		// Non-Formatter pointer to compound (or reached under disable):
 		// badVerb is possible, and the pointee can be dereferenced.
-		if factorAt.kind == "" {
-			*factorAt = disableFactor{kind: factorNonFormatterPointer, name: u.Elem().String()}
+		// The factor is published to factorAt only when the walk leaks,
+		// otherwise it would be reported as the reason of an unrelated leak found later.
+		factor := *factorAt
+		if factor.kind == "" {
+			factor = disableFactor{kind: factorNonFormatterPointer, name: u.Elem().String()}
 		}
-		if !m.walk(u.Elem(), true, true, visited, factorAt, path) {
+		if !m.walk(u.Elem(), true, true, visited, &factor, path) {
 			return false
 		}
+		*factorAt = factor
 		// A Formatter pointer gets here only under fd/bp, so it is not called "non-Formatter".
 		step := walkStep{desc: "pointer to " + shortTypeString(u.Elem())}
 		if !isFormatter {

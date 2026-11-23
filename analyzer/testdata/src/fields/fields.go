@@ -347,3 +347,28 @@ type fmtSliceWrapper []struct {
 }
 
 func (fmtSliceWrapper) Format(fmt.State, rune) {}
+
+// plainTarget holds nothing sensitive, so a pointer to it leaks nothing.
+type plainTarget struct{ X int }
+
+// staleFactorHolder — the leak is behind the unexported field s, not behind the pointer P,
+// so the reason must not be taken from the pointer walked before s.
+type staleFactorHolder struct {
+	P *plainTarget
+	s fakesensitive.String // want `sensitive field "s" is reachable through an unexported field "s"`
+}
+
+// StaleFactorOuter checks the reason reported for a field which reaches staleFactorHolder.
+type StaleFactorOuter struct {
+	H staleFactorHolder // want `sensitive field "H" is reachable through an unexported field "s"`
+}
+
+// staleFactorLeaf is the value of StaleFactorMap.
+type staleFactorLeaf struct {
+	s fakesensitive.String // want `sensitive field "s" is reachable through an unexported field "s"`
+}
+
+// StaleFactorMap — a pointer in the map key leaks nothing and must not hide the reason in the value.
+type StaleFactorMap struct {
+	M map[*plainTarget]staleFactorLeaf // want `sensitive field "M" is reachable through an unexported field "s"`
+}
