@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"go/token"
 	"go/types"
+	"maps"
 	"slices"
 	"strings"
 
@@ -32,30 +33,30 @@ func levelCheck(c typeClass) requires {
 	}
 }
 
-// typeRef records a reference to a configured safe type found in an analysis pass.
-type typeRef struct {
-	pos   token.Pos
-	named *types.Named
-}
-
-// collectType validates an object from Defs/Uses and appends it to refs
-// if it matches a configured safe type and its position is not skipped
-// by skip-tests or skip-generated.
+// collectType records pos in first
+// if obj, taken from Defs/Uses, is a configured safe type,
+// pos is not skipped by skip-tests or skip-generated,
+// and it precedes the position recorded earlier for this type.
 func (m matcher) collectType(
 	shouldCheck func(token.Pos) bool,
 	obj types.Object,
 	pos token.Pos,
-	refs []typeRef,
-) []typeRef {
+	first map[*types.Named]token.Pos,
+) {
 	tn, ok := obj.(*types.TypeName)
 	if !ok {
-		return refs
+		return
 	}
 	named, ok := tn.Type().(*types.Named)
-	if !ok || !m.isSensitiveNamed(named) || !shouldCheck(pos) {
-		return refs
+	if !ok || !m.isSensitiveNamed(named) {
+		return
 	}
-	return append(refs, typeRef{pos: pos, named: named})
+	if prev, seen := first[named]; seen && prev <= pos {
+		return
+	}
+	if shouldCheck(pos) {
+		first[named] = pos
+	}
 }
 
 // runReliabilityLevels checks all configured safe types found in the analyzed package
@@ -66,8 +67,8 @@ func (m matcher) collectType(
 // configured safe types — the built-in defaults — lives in an external package.)
 // References in files skipped by skip-tests or skip-generated are ignored,
 // so a type used both there and in a regular file is reported in the regular one.
-// References are collected then sorted by position so the diagnostic always
-// lands at the first occurrence (deterministic).
+// Only the first occurrence of each type is kept,
+// and the diagnostics are emitted in the order of these positions (deterministic).
 func (m matcher) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(token.Pos) bool) {
 	demanded := requires{
 		marshalJSONSafe: m.requireMarshalJSON,
@@ -76,35 +77,27 @@ func (m matcher) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(toke
 		goStringSafe:    m.requireGoString,
 		stringSafe:      m.requireString,
 	}
-	if !demanded.marshalJSONSafe && !demanded.marshalTextSafe && !demanded.formatSafe &&
-		!demanded.goStringSafe && !demanded.stringSafe {
+	if demanded == (requires{}) {
 		return
 	}
 
-	// Collect all references to configured safe types with their positions.
-	var refs []typeRef
+	// The first position of each configured safe type.
+	first := make(map[*types.Named]token.Pos)
 
 	// Local type declarations.
 	for id, obj := range pass.TypesInfo.Defs {
-		refs = m.collectType(shouldCheck, obj, id.Pos(), refs)
+		m.collectType(shouldCheck, obj, id.Pos(), first)
 	}
 
 	// External type references.
 	for id, obj := range pass.TypesInfo.Uses {
-		refs = m.collectType(shouldCheck, obj, id.Pos(), refs)
+		m.collectType(shouldCheck, obj, id.Pos(), first)
 	}
 
-	// Sort by position for deterministic diagnostic placement.
-	slices.SortFunc(refs, func(a, b typeRef) int { return cmp.Compare(a.pos, b.pos) })
-
-	// Deduplicate only after sorting, so the first occurrence wins.
-	seen := make(map[*types.Named]bool)
-	for _, r := range refs {
-		if seen[r.named] {
-			continue
-		}
-		seen[r.named] = true
-		m.emitLevelDiagnostics(pass, r.pos, r.named, demanded)
+	for _, named := range slices.SortedFunc(maps.Keys(first), func(a, b *types.Named) int {
+		return cmp.Compare(first[a], first[b])
+	}) {
+		m.emitLevelDiagnostics(pass, first[named], named, demanded)
 	}
 }
 
@@ -118,10 +111,7 @@ func (m matcher) emitLevelDiagnostics(
 ) {
 	cls := m.classify(named)
 	satisfies := levelCheck(*cls)
-	typeName := named.Obj().Name()
-	if pkg := named.Obj().Pkg(); pkg != nil {
-		typeName = pkg.Path() + "." + typeName
-	}
+	typeName := qualifiedName(named)
 
 	for _, d := range [...]struct {
 		demand, satisfy bool
