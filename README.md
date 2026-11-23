@@ -194,7 +194,7 @@ lint-sensitive ./...
 
 By default, types from several sensitive-value libraries are recognized:
 `github.com/powerman/sensitive`, `github.com/go-playground/sensitive`,
-`github.com/negrel/secrecy.Secret`, and `github.com/angusgmorrison/logfusc`.
+`github.com/negrel/secrecy.Secret`, and `github.com/angusgmorrison/logfusc.Secret`.
 If you use other libraries or project-specific types, extend via the `-sensitive.types` flag:
 
 ```bash

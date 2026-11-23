@@ -3,7 +3,7 @@
 //
 // By default, sensitive types are those defined in github.com/powerman/sensitive,
 // github.com/go-playground/sensitive, github.com/negrel/secrecy.Secret, and
-// github.com/angusgmorrison/logfusc.
+// github.com/angusgmorrison/logfusc.Secret.
 package analyzer
 
 import (
