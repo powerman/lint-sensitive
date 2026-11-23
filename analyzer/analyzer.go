@@ -67,7 +67,7 @@ type Config struct {
 	// and are not structurally protected.
 	RequireString bool
 
-	// Verbose flag enables diagnostic output to stderr
+	// When Debug is true, the analyzer prints diagnostic output to stderr
 	// showing the classification of each sensitive type.
 	Debug bool
 }
