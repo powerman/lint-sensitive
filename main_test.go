@@ -95,6 +95,42 @@ func TestExampleEndToEnd(t *testing.T) {
 	}
 }
 
+// TestReliabilityFlagsEndToEnd verifies that -sensitive.require-* flags
+// parsed by the real binary produce their diagnostics.
+// The example types satisfy the GoString and String levels,
+// so -sensitive.require-gostring and -sensitive.require-string are covered
+// only by analyzer.TestRunFlag.
+func TestReliabilityFlagsEndToEnd(t *testing.T) {
+	t.Parallel()
+
+	binary := buildBinary(t)
+	exampleDir := filepath.Join(repoRoot(t), "example")
+
+	tests := []struct {
+		flag, want string
+	}{
+		{"require-marshal-json", "JSON marshal safety"},
+		{"require-marshal-text", "text marshal safety"},
+		{"require-format", "format-level safety"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.flag, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := exec.CommandContext(t.Context(), binary,
+				"-sensitive.types=github.com/powerman/lint-sensitive/example.Secret",
+				"-sensitive."+tc.flag,
+				".",
+			)
+			cmd.Dir = exampleDir
+			out, _ := cmd.CombinedOutput()
+			if !strings.Contains(string(out), tc.want) {
+				t.Errorf("-sensitive.%s: output does not contain %q\n%s", tc.flag, tc.want, out)
+			}
+		})
+	}
+}
+
 func TestVersionFlag(t *testing.T) {
 	t.Parallel()
 
