@@ -23,3 +23,13 @@ type CheckString struct {
 type CheckSinglePtr struct {
 	X fakesensitive.SinglePtr[struct{ a int }] // want "configured safe type fakesensitive.SinglePtr does not guarantee GoString-level safety"
 }
+
+// Wrong-signature decoys and pointer-receiver-only methods do not count.
+
+type CheckDecoy struct {
+	X fakesensitive.Decoy // want "configured safe type fakesensitive.Decoy does not guarantee GoString-level safety"
+}
+
+type CheckPtrRecv struct {
+	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee GoString-level safety"
+}

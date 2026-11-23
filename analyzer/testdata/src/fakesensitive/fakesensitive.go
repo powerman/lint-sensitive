@@ -88,3 +88,23 @@ type PtrToLabel struct {
 type PtrToCompound struct {
 	p *SomeCompound
 }
+
+// Decoy has the method names of the fmt/encoding interfaces but with wrong signatures,
+// so it implements none of them.
+type Decoy string
+
+func (Decoy) Format(x int)        {}
+func (Decoy) String() int         { return 0 }
+func (Decoy) GoString() int       { return 0 }
+func (Decoy) MarshalJSON() string { return "" }
+func (Decoy) MarshalText() string { return "" }
+
+// PtrRecv declares the fmt/encoding interface methods on a pointer receiver only.
+// fmt and encoding/json do not call them on a non-addressable T value.
+type PtrRecv string
+
+func (*PtrRecv) Format(f fmt.State, verb rune) {}
+func (*PtrRecv) String() string                { return "" }
+func (*PtrRecv) GoString() string              { return "" }
+func (*PtrRecv) MarshalJSON() ([]byte, error)  { return nil, nil }
+func (*PtrRecv) MarshalText() ([]byte, error)  { return nil, nil }

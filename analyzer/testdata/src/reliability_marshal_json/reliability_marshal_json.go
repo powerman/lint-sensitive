@@ -27,3 +27,13 @@ type CheckLogfusc struct {
 type CheckRef struct {
 	X fakesensitive.Ref[string] // want "configured safe type fakesensitive.Ref does not guarantee JSON marshal safety"
 }
+
+// Wrong-signature decoys and pointer-receiver-only methods do not count.
+
+type CheckDecoy struct {
+	X fakesensitive.Decoy // want "configured safe type fakesensitive.Decoy does not guarantee JSON marshal safety"
+}
+
+type CheckPtrRecv struct {
+	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee JSON marshal safety"
+}

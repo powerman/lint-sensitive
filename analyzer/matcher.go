@@ -184,30 +184,68 @@ func inGeneratedFile(pass *analysis.Pass, pos token.Pos) bool {
 	return false
 }
 
-// hasMethod reports whether t or *t has a method with the given name.
-// It checks the full method set, including promoted value-receiver methods on *t.
-// The check is by name only — signature verification is intentionally loose
-// because in practice a type having a method named "Format"/"String"/etc.
-// is overwhelmingly likely to be the fmt interface method.
-func (matcher) hasMethod(t types.Type, name string) bool {
-	// Check the method set of t directly.
-	// types.NewMethodSet correctly handles all types including pointers,
-	// returning all methods available on the type (including promoted
-	// value-receiver methods for pointer types).
-	mset := types.NewMethodSet(t)
-	for method := range mset.Methods() {
-		if method.Obj().Name() == name {
-			return true
-		}
+// methodShape returns a predicate for the signature of the fmt/encoding interface method
+// with the given name.
+// The check is structural (no stdlib interface resolution),
+// so a same-named method with another signature is not mistaken for the interface method.
+func methodShape(name string) func(*types.Signature) bool {
+	switch name {
+	case "Format":
+		return isFormatSig
+	case "String", "GoString":
+		return isNoArgsResult(types.Typ[types.String])
+	case "MarshalJSON", "MarshalText":
+		return isMarshalSig
+	default:
+		panic("hasMethod: unsupported method name " + name)
 	}
-	// For non-pointer types, also check *t for promoted value-receiver methods.
-	if _, ok := t.(*types.Pointer); !ok {
-		ptr := types.NewPointer(t)
-		mset = types.NewMethodSet(ptr)
-		for method := range mset.Methods() {
-			if method.Obj().Name() == name {
-				return true
-			}
+}
+
+// isFormatSig reports whether sig is func(fmt.State, rune).
+func isFormatSig(sig *types.Signature) bool {
+	if sig.Params().Len() != 2 || sig.Results().Len() != 0 || sig.Variadic() {
+		return false
+	}
+	state, ok := types.Unalias(sig.Params().At(0).Type()).(*types.Named)
+	if !ok || state.Obj().Pkg() == nil ||
+		state.Obj().Pkg().Path() != "fmt" || state.Obj().Name() != "State" {
+		return false
+	}
+	return types.Identical(sig.Params().At(1).Type(), types.Typ[types.Int32])
+}
+
+// isNoArgsResult returns a predicate for func() <result>.
+func isNoArgsResult(result types.Type) func(*types.Signature) bool {
+	return func(sig *types.Signature) bool {
+		return sig.Params().Len() == 0 && sig.Results().Len() == 1 &&
+			types.Identical(sig.Results().At(0).Type(), result)
+	}
+}
+
+// isMarshalSig reports whether sig is func() ([]byte, error).
+func isMarshalSig(sig *types.Signature) bool {
+	if sig.Params().Len() != 0 || sig.Results().Len() != 2 {
+		return false
+	}
+	return types.Identical(sig.Results().At(0).Type(), types.NewSlice(types.Typ[types.Byte])) &&
+		types.Identical(sig.Results().At(1).Type(), types.Universe.Lookup("error").Type())
+}
+
+// hasMethod reports whether the method set of t contains a method
+// with the given name and the signature of the corresponding fmt/encoding interface method.
+// The method set is taken as is, so for a non-pointer t
+// methods declared on *t are not counted:
+// fmt and encoding/json never call them on a non-addressable value.
+// Promoted value-receiver methods are part of the method set of both t and *t.
+func (matcher) hasMethod(t types.Type, name string) bool {
+	hasShape := methodShape(name)
+	for method := range types.NewMethodSet(t).Methods() {
+		if method.Obj().Name() != name {
+			continue
+		}
+		sig, ok := method.Type().(*types.Signature)
+		if ok && hasShape(sig) {
+			return true
 		}
 	}
 	return false

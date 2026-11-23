@@ -2,6 +2,9 @@ package analyzer
 
 import (
 	"bytes"
+	"go/ast"
+	"go/importer"
+	"go/parser"
 	"go/token"
 	"go/types"
 	"log"
@@ -556,7 +559,7 @@ func TestDebugFlag(t *testing.T) {
 	// Add a Format method so classify sets fmtFormatter = true.
 	recv := types.NewVar(token.NoPos, testPkg, "", named)
 	params := types.NewTuple(
-		types.NewVar(token.NoPos, nil, "s", types.Typ[types.Uintptr]),
+		types.NewVar(token.NoPos, nil, "s", fmtStateType),
 		types.NewVar(token.NoPos, nil, "v", types.Typ[types.Rune]),
 	)
 	formatFunc := types.NewFunc(
@@ -633,7 +636,7 @@ func TestDebugDedup(t *testing.T) {
 		token.NoPos, testPkg, "Format",
 		types.NewSignatureType(recv, nil, nil,
 			types.NewTuple(
-				types.NewVar(token.NoPos, nil, "s", types.Typ[types.Uintptr]),
+				types.NewVar(token.NoPos, nil, "s", fmtStateType),
 				types.NewVar(token.NoPos, nil, "v", types.Typ[types.Rune]),
 			), nil, false,
 		),
@@ -651,7 +654,7 @@ func TestDebugDedup(t *testing.T) {
 		token.NoPos, testPkg, "Format",
 		types.NewSignatureType(recvOther, nil, nil,
 			types.NewTuple(
-				types.NewVar(token.NoPos, nil, "s", types.Typ[types.Uintptr]),
+				types.NewVar(token.NoPos, nil, "s", fmtStateType),
 				types.NewVar(token.NoPos, nil, "v", types.Typ[types.Rune]),
 			), nil, false,
 		),
@@ -685,5 +688,121 @@ func TestDebugDedup(t *testing.T) {
 	}
 	if debugLines != 1 {
 		t.Errorf("expected exactly 1 debug line, got %d\nfull output:\n%s", debugLines, output)
+	}
+}
+
+// fmtStateType is a stand-in for fmt.State.
+// hasMethod recognizes it by package path and name only, so no real fmt import is needed.
+var fmtStateType = types.NewNamed(
+	types.NewTypeName(token.NoPos, types.NewPackage("fmt", "fmt"), "State", nil),
+	types.NewInterfaceType(nil, nil),
+	nil,
+)
+
+// TestHasMethod verifies that hasMethod accepts only methods with the signature
+// of the corresponding fmt/encoding interface method
+// and only those in the method set of the given type.
+func TestHasMethod(t *testing.T) {
+	t.Parallel()
+
+	const src = `package p
+
+import "fmt"
+
+type Good string
+
+func (Good) Format(fmt.State, rune)      {}
+func (Good) String() string              { return "" }
+func (Good) GoString() string            { return "" }
+func (Good) MarshalJSON() ([]byte, error) { return nil, nil }
+func (Good) MarshalText() ([]byte, error) { return nil, nil }
+
+type Decoy string
+
+func (Decoy) Format(int)                     {}
+func (Decoy) String() int                    { return 0 }
+func (Decoy) GoString() (string, error)      { return "", nil }
+func (Decoy) MarshalJSON() []byte            { return nil }
+func (Decoy) MarshalText() (string, error)   { return "", nil }
+
+type DecoyArgs string
+
+func (DecoyArgs) Format(fmt.State, int)       {}
+func (DecoyArgs) String(int) string           { return "" }
+func (DecoyArgs) GoString(...int) string      { return "" }
+func (DecoyArgs) MarshalJSON(int) ([]byte, error) { return nil, nil }
+func (DecoyArgs) MarshalText() ([]byte, int, error) { return nil, 0, nil }
+
+type Named string
+type MyBytes []byte
+
+func (Named) String() Named                  { return "" }
+func (Named) MarshalJSON() (MyBytes, error)  { return nil, nil }
+func (Named) Format(fmt.State, ...rune)      {}
+
+type PtrRecv string
+
+func (*PtrRecv) Format(fmt.State, rune)      {}
+func (*PtrRecv) String() string              { return "" }
+func (*PtrRecv) GoString() string            { return "" }
+func (*PtrRecv) MarshalJSON() ([]byte, error) { return nil, nil }
+func (*PtrRecv) MarshalText() ([]byte, error) { return nil, nil }
+
+type Promoted struct{ Good }
+
+type PromotedPtr struct{ *PtrRecv }
+
+type PromotedFromPtrEmbed struct{ PtrRecv }
+`
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "p.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := types.Config{Importer: importer.ForCompiler(fset, "source", nil)}
+	pkg, err := conf.Check("p", fset, []*ast.File{file}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	methods := []string{"Format", "String", "GoString", "MarshalJSON", "MarshalText"}
+	tests := []struct {
+		typ  string
+		ptr  bool
+		want bool
+	}{
+		{"Good", false, true},
+		{"Good", true, true},
+		{"Decoy", false, false},
+		{"Decoy", true, false},
+		{"DecoyArgs", false, false},
+		{"Named", false, false},
+		// Methods declared on *T are not in the method set of T.
+		{"PtrRecv", false, false},
+		{"PtrRecv", true, true},
+		// Promoted value-receiver methods are in the method set of both.
+		{"Promoted", false, true},
+		{"Promoted", true, true},
+		// Promoted through an embedded *T: both T and *T get the methods.
+		{"PromotedPtr", false, true},
+		// Promoted through an embedded T with pointer receivers: only *outer has them.
+		{"PromotedFromPtrEmbed", false, false},
+		{"PromotedFromPtrEmbed", true, true},
+	}
+
+	m := newMatcher(Config{NoDefaultTypes: true})
+	for _, tt := range tests {
+		typ := pkg.Scope().Lookup(tt.typ).Type()
+		if tt.ptr {
+			typ = types.NewPointer(typ)
+		}
+		for _, name := range methods {
+			t.Run(typ.String()+"/"+name, func(t *testing.T) {
+				t.Parallel()
+				if got := m.hasMethod(typ, name); got != tt.want {
+					t.Errorf("hasMethod(%v, %q) = %v, want %v", typ, name, got, tt.want)
+				}
+			})
+		}
 	}
 }
