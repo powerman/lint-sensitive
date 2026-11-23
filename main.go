@@ -20,8 +20,9 @@ import (
 var errUnsupportedV = errors.New("use -V=full")
 
 func main() {
-	// Register -V before multichecker so the framework's stub (which always
-	// prints "devel") is not installed; we print the VCS-stamped version instead.
+	// Register -V before multichecker,
+	// so the framework's stub (which always prints "devel") is not installed;
+	// we print the VCS-stamped version instead.
 	// analysisflags.addVersionFlag registers -V only when flag.Lookup("V") == nil.
 	flag.Var(versionFlag{}, "V", "print version and exit")
 
@@ -54,10 +55,10 @@ func (versionFlag) Set(s string) error {
 }
 
 // resolveVersion returns the module version stamped by the Go toolchain.
-// Go 1.24+ derives Main.Version from VCS — the exact tag for a clean checkout
-// sitting on it, or a pseudo-version otherwise — so no -ldflags -X is needed:
-// the release builds from a tag checkout. Falls back to "(unknown)" only when
-// build info is entirely unavailable.
+// Go 1.24+ derives Main.Version from VCS:
+// the exact tag for a clean checkout sitting on it, or a pseudo-version otherwise.
+// So no -ldflags -X is needed, because the release builds from a tag checkout.
+// Falls back to "(unknown)" only when build info is entirely unavailable.
 func resolveVersion() string {
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
