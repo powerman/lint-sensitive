@@ -9,4 +9,4 @@ require (
 	github.com/powerman/sensitive v0.6.1
 )
 
-require github.com/shopspring/decimal v1.4.0 // indirect
+require github.com/shopspring/decimal v1.6.0 // indirect
