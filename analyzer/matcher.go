@@ -57,7 +57,7 @@ var debugPrinted sync.Map
 // disableFactor records the first factor on the path
 // that disables [Formatter]/[Stringer]/[GoStringer] interface dispatch.
 type disableFactor struct {
-	kind string // "unexportedField" or "nonFormatterPointer"
+	kind string // one of the factor* constants
 	name string // field name or pointer type description
 }
 

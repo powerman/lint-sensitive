@@ -113,7 +113,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 			var factor disableFactor
 			fd := !f.Exported()
 			if fd {
-				factor = disableFactor{kind: "unexportedField", name: f.Name()}
+				factor = disableFactor{kind: factorUnexportedField, name: f.Name()}
 			}
 			var path []walkStep
 			if m.walk(f.Type(), fd, false, make(map[walkKey]bool), &factor, &path) {
