@@ -16,11 +16,7 @@ func newPrintAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis.
 		Doc:      "detect builtin print/println calls with basic-kind sensitive arguments",
 		Requires: requires,
 		Run: func(pass *analysis.Pass) (any, error) {
-			m, err := get(pass)
-			if err != nil {
-				return nil, err
-			}
-			return runPrint(pass, m)
+			return runPrint(pass, get(pass))
 		},
 	}
 }
@@ -30,31 +26,19 @@ func runPrint(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 	shouldCheck := m.newShouldCheck(pass)
 
-	nodeFilter := []ast.Node{(*ast.CallExpr)(nil)}
-	inspectResult.Preorder(nodeFilter, func(n ast.Node) {
-		call := n.(*ast.CallExpr)
-
+	for call := range inspector.All[*ast.CallExpr](inspectResult) {
 		ident, ok := call.Fun.(*ast.Ident)
 		if !ok {
-			return
+			continue
 		}
 
-		obj := pass.TypesInfo.Uses[ident]
-		if obj == nil {
-			return
-		}
-
-		builtin, ok := obj.(*types.Builtin)
-		if !ok {
-			return
-		}
-
-		if builtin.Name() != "print" && builtin.Name() != "println" {
-			return
+		builtin, ok := pass.TypesInfo.Uses[ident].(*types.Builtin)
+		if !ok || (builtin.Name() != "print" && builtin.Name() != "println") {
+			continue
 		}
 
 		if !shouldCheck(call.Pos()) {
-			return
+			continue
 		}
 
 		for _, arg := range call.Args {
@@ -69,7 +53,7 @@ func runPrint(pass *analysis.Pass, m matcher) (any, error) {
 				break
 			}
 		}
-	})
+	}
 
 	//nolint:nilnil // Returning nil, nil is standard for go/analysis analyzers.
 	return nil, nil

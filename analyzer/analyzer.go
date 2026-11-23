@@ -23,7 +23,7 @@ var defaultTypes = []string{ // Const.
 // It abstracts over the two ways to obtain a matcher:
 // from New() (always returns the same pre-built matcher)
 // and from FlagAnalyzer (reads the matcher from pass.ResultOf).
-type matcherFunc func(*analysis.Pass) (matcher, error)
+type matcherFunc func(*analysis.Pass) matcher
 
 // Config controls which packages' named types are considered sensitive.
 type Config struct {
@@ -76,7 +76,7 @@ type Config struct {
 func New(cfg Config) []*analysis.Analyzer {
 	m := newMatcher(cfg)
 	req := []*analysis.Analyzer{inspect.Analyzer}
-	get := func(*analysis.Pass) (matcher, error) { return m, nil }
+	get := func(*analysis.Pass) matcher { return m }
 	return []*analysis.Analyzer{
 		newFieldsAnalyzer(req, get),
 		newPrintAnalyzer(req, get),

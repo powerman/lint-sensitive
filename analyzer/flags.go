@@ -35,65 +35,49 @@ var FieldsAnalyzer = newFieldsAnalyzer(
 var PrintAnalyzer = newPrintAnalyzer(
 	[]*analysis.Analyzer{inspect.Analyzer, FlagAnalyzer}, matcherFromFlag)
 
-// Flag values are read through the pointers returned at registration,
+// Flags are bound to the fields of flagConfig at registration,
 // so a typo in a flag name cannot silently disconnect a flag from its Config field.
+// Types is the exception: it is a comma-separated string which runFlag splits.
 //
 //nolint:gochecknoglobals // Registered in init(), read in runFlag.
 var (
-	flagTypes              *string
-	flagNoDefaultTypes     *bool
-	flagSkipTests          *bool
-	flagSkipGenerated      *bool
-	flagRequireMarshalJSON *bool
-	flagRequireMarshalText *bool
-	flagRequireFormat      *bool
-	flagRequireGoString    *bool
-	flagRequireString      *bool
-	flagDebug              *bool
+	flagConfig Config
+	flagTypes  string
 )
 
 func init() { //nolint:gochecknoinits // Required for flag registration.
 	fs := &FlagAnalyzer.Flags
-	flagTypes = fs.String("types", "",
+	fs.StringVar(&flagTypes, "types", "",
 		"Comma-separated list of sensitive type package import paths "+
 			"(optionally with .TypeName suffix to restrict to a specific type)")
-	flagNoDefaultTypes = fs.Bool("no-default-types", false,
+	fs.BoolVar(&flagConfig.NoDefaultTypes, "no-default-types", false,
 		"Do not seed the built-in default sensitive type list")
-	flagSkipTests = fs.Bool("skip-tests", false,
+	fs.BoolVar(&flagConfig.SkipTests, "skip-tests", false,
 		"Do not report diagnostics in _test.go files")
-	flagSkipGenerated = fs.Bool("skip-generated", false,
+	fs.BoolVar(&flagConfig.SkipGenerated, "skip-generated", false,
 		"Do not report diagnostics in generated files (Code generated ... DO NOT EDIT)")
-	flagRequireMarshalJSON = fs.Bool("require-marshal-json", false,
+	fs.BoolVar(&flagConfig.RequireMarshalJSON, "require-marshal-json", false,
 		"Require all configured safe types to implement encoding.TextMarshaler or json.Marshaler")
-	flagRequireMarshalText = fs.Bool("require-marshal-text", false,
+	fs.BoolVar(&flagConfig.RequireMarshalText, "require-marshal-text", false,
 		"Require all configured safe types to implement encoding.TextMarshaler")
-	flagRequireFormat = fs.Bool("require-format", false,
+	fs.BoolVar(&flagConfig.RequireFormat, "require-format", false,
 		"Require all configured safe types to implement fmt.Formatter or be structurally protected")
-	flagRequireGoString = fs.Bool("require-gostring", false,
+	fs.BoolVar(&flagConfig.RequireGoString, "require-gostring", false,
 		"Require all configured safe types to implement fmt.GoStringer, fmt.Formatter, or be structurally protected")
-	flagRequireString = fs.Bool("require-string", false,
+	fs.BoolVar(&flagConfig.RequireString, "require-string", false,
 		"Require all configured safe types to implement fmt.Stringer, fmt.Formatter, or be structurally protected")
-	flagDebug = fs.Bool("debug", false,
+	fs.BoolVar(&flagConfig.Debug, "debug", false,
 		"Print sensitive type classification to stderr")
 }
 
-func matcherFromFlag(pass *analysis.Pass) (matcher, error) {
-	return pass.ResultOf[FlagAnalyzer].(matcher), nil
+func matcherFromFlag(pass *analysis.Pass) matcher {
+	return pass.ResultOf[FlagAnalyzer].(matcher)
 }
 
 func runFlag(*analysis.Pass) (any, error) {
-	return newMatcher(Config{
-		Types:              splitCSV(*flagTypes),
-		NoDefaultTypes:     *flagNoDefaultTypes,
-		SkipTests:          *flagSkipTests,
-		SkipGenerated:      *flagSkipGenerated,
-		RequireMarshalJSON: *flagRequireMarshalJSON,
-		RequireMarshalText: *flagRequireMarshalText,
-		RequireFormat:      *flagRequireFormat,
-		RequireGoString:    *flagRequireGoString,
-		RequireString:      *flagRequireString,
-		Debug:              *flagDebug,
-	}), nil
+	cfg := flagConfig
+	cfg.Types = splitCSV(flagTypes)
+	return newMatcher(cfg), nil
 }
 
 // splitCSV splits a comma-separated string, trims whitespace from each element,
