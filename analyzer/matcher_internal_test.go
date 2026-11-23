@@ -359,6 +359,12 @@ func TestIsQualifier(t *testing.T) {
 		nil,
 	)
 
+	namedPtrCompound := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Npc", nil),
+		types.NewPointer(types.NewStruct(nil, nil)),
+		nil,
+	)
+
 	namedString := types.NewNamed(
 		types.NewTypeName(token.NoPos, pkg, "Nstr", nil),
 		types.Typ[types.String],
@@ -397,6 +403,11 @@ func TestIsQualifier(t *testing.T) {
 		{name: "*Nup (underlying unsafe.Pointer)", typ: types.NewPointer(namedUnsafePtr), want: true, plan: "*Pointer→*Named→*UnsafePointer"},
 		{name: "*Nstr (underlying string)", typ: types.NewPointer(namedString), want: true, plan: "*Pointer→*Named→*Basic (non-compound prints as address)"},
 		{name: "*Nint (underlying int)", typ: types.NewPointer(namedInt), want: true, plan: "*Pointer→*Named→*Basic (non-compound prints as address)"},
+		// Named types whose underlying type is a qualifier (not behind a pointer)
+		{name: "Np (underlying *int)", typ: namedPtr, want: true, plan: "named→*Pointer"},
+		{name: "Nf (underlying func())", typ: namedFunc, want: true, plan: "named→Signature"},
+		{name: "Nc (underlying chan int)", typ: namedChan, want: true, plan: "named→Chan"},
+		{name: "Nup (underlying unsafe.Pointer)", typ: namedUnsafePtr, want: true, plan: "named→UnsafePointer"},
 		// Non-qualifiers
 		{name: "*[]byte (compound)", typ: types.NewPointer(types.NewSlice(types.Typ[types.Uint8])), want: false, plan: "*Pointer→*<compound> — *[]byte is NOT a qualifier"},
 		{name: "*struct{} (compound)", typ: types.NewPointer(types.NewStruct(nil, nil)), want: false, plan: "*Pointer→*<compound>"},
@@ -404,6 +415,8 @@ func TestIsQualifier(t *testing.T) {
 		{name: "*map[int]int (compound)", typ: types.NewPointer(types.NewMap(types.Typ[types.Int], types.Typ[types.Int])), want: false, plan: "*Pointer→*<compound>"},
 		{name: "struct{} (not a pointer)", typ: types.NewStruct(nil, nil), want: false, plan: "non-pointer → false (default)"},
 		{name: "*Ns (underlying struct{})", typ: types.NewPointer(namedStruct), want: false, plan: "*Pointer→*Named→default (underlying struct) — named wrapper over non-qualifier"},
+		{name: "Ns (underlying struct{})", typ: namedStruct, want: false, plan: "named→struct is not a qualifier"},
+		{name: "Npc (underlying *struct{})", typ: namedPtrCompound, want: false, plan: "named→*Pointer→*<compound>"},
 	}
 
 	m := newMatcher(Config{NoDefaultTypes: true})
@@ -464,6 +477,16 @@ func TestIsStructurallySafe(t *testing.T) {
 	)
 	nodeNamed.SetUnderlying(nodeStruct)
 
+	ppInt := types.NewPointer(types.NewPointer(types.Typ[types.Int]))
+	structOf := func(ft types.Type) *types.Struct {
+		return types.NewStruct([]*types.Var{types.NewField(token.NoPos, pkg, "f", ft, false)}, nil)
+	}
+	namedFunc := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Nf", nil),
+		types.NewSignatureType(nil, nil, nil, nil, nil, false),
+		nil,
+	)
+
 	m := newMatcher(Config{NoDefaultTypes: true})
 	tests := []struct {
 		name string
@@ -515,6 +538,54 @@ func TestIsStructurallySafe(t *testing.T) {
 			typ:  nodeNamed,
 			want: true,
 			plan: "named with self-referencing struct field → visited cycle-break prevents infinite loop → true via **int qualifier",
+		},
+		{
+			name: "nested_anonymous_struct",
+			typ:  structOf(structOf(ppInt)),
+			want: true,
+			plan: "struct{ v struct{ pp **int } } → recurse into anonymous struct field → true",
+		},
+		{
+			name: "array_of_qualifier",
+			typ:  structOf(types.NewArray(ppInt, 1)),
+			want: true,
+			plan: "struct{ a [1]**int } → recurse into array element → true",
+		},
+		{
+			name: "slice_of_qualifier",
+			typ:  structOf(types.NewSlice(ppInt)),
+			want: true,
+			plan: "struct{ s []**int } → recurse into slice element → true",
+		},
+		{
+			name: "map_value_qualifier",
+			typ:  structOf(types.NewMap(types.Typ[types.String], ppInt)),
+			want: true,
+			plan: "struct{ m map[string]**int } → recurse into map value → true",
+		},
+		{
+			name: "map_key_qualifier",
+			typ:  structOf(types.NewMap(ppInt, types.Typ[types.String])),
+			want: true,
+			plan: "struct{ m map[**int]string } → recurse into map key → true",
+		},
+		{
+			name: "named_func_field",
+			typ:  structOf(namedFunc),
+			want: true,
+			plan: "struct{ f Nf } with Nf a named func() → named qualifier → true",
+		},
+		{
+			name: "array_of_pointer_to_compound",
+			typ:  structOf(types.NewArray(types.NewPointer(types.NewStruct(nil, nil)), 1)),
+			want: false,
+			plan: "struct{ a [1]*struct{} } → *<compound> is not a qualifier → false",
+		},
+		{
+			name: "map_without_qualifier",
+			typ:  structOf(types.NewMap(types.Typ[types.String], types.Typ[types.Int])),
+			want: false,
+			plan: "struct{ m map[string]int } → false",
 		},
 	}
 

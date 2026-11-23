@@ -40,3 +40,18 @@ type CheckDecoy struct {
 type CheckPtrRecv struct {
 	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee format-level safety.*declared only on a pointer receiver.*: Format\\)"
 }
+
+// Types that PASS format-level safety: the qualifier is behind a named type
+// or nested in an anonymous struct or array.
+
+type CheckNamedFuncWrap struct {
+	X fakesensitive.NamedFuncWrap
+}
+
+type CheckNestedRef struct {
+	X fakesensitive.NestedRef
+}
+
+type CheckArrayRef struct {
+	X fakesensitive.ArrayRef
+}

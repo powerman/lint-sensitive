@@ -347,10 +347,10 @@ func (c *checker) classify(t *types.Named) *typeClass {
 // isQualifier reports whether t is one of the structurally-protected kinds:
 // *Pointer, *Interface, Chan, Func, UnsafePointer,
 // or *<non-compound> (*string, *int, *bool, etc.),
-// or *TypeParam where the constraint excludes all compound kinds.
+// or *TypeParam where the constraint excludes all compound kinds,
+// or a named type whose underlying type is one of these.
 func (matcher) isQualifier(t types.Type) bool {
-	t = types.Unalias(t)
-	switch u := t.(type) {
+	switch u := t.Underlying().(type) {
 	case *types.Chan, *types.Signature: // Chan, Func
 		return true
 	case *types.Basic:
@@ -418,7 +418,9 @@ func typeElemHasCompoundTerm(elem types.Type) bool {
 
 // isStructurallySafe reports whether the type
 // (when ALL of Formatter/Stringer/GoStringer are disabled)
-// still protects its content structurally — i.e. it reaches at least one qualifying field.
+// still protects its content structurally:
+// it reaches at least one qualifier through fields,
+// array and slice elements, and map keys and values, but never through pointers.
 func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) bool {
 	t = types.Unalias(t)
 	if visited[t] {
@@ -426,27 +428,24 @@ func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) b
 	}
 	visited[t] = true
 
-	switch u := t.(type) {
-	case *types.Named:
-		return m.isStructurallySafe(u.Underlying(), visited)
+	if m.isQualifier(t) {
+		return true
+	}
+	switch u := t.Underlying().(type) {
 	case *types.Struct:
 		for f := range u.Fields() {
-			ft := types.Unalias(f.Type())
-			if m.isQualifier(ft) {
+			if m.isStructurallySafe(f.Type(), visited) {
 				return true
 			}
-			// Recurse into named type fields (they may contain qualifiers,
-			// e.g. unique.Handle[T] wrapping *T).
-			if _, ok := ft.(*types.Named); ok {
-				if m.isStructurallySafe(ft, visited) {
-					return true
-				}
-			}
 		}
-		return false
-	default:
-		return false
+	case *types.Array:
+		return m.isStructurallySafe(u.Elem(), visited)
+	case *types.Slice:
+		return m.isStructurallySafe(u.Elem(), visited)
+	case *types.Map:
+		return m.isStructurallySafe(u.Key(), visited) || m.isStructurallySafe(u.Elem(), visited)
 	}
+	return false
 }
 
 // debugClassify prints one classification line to stderr

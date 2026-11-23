@@ -299,9 +299,12 @@ The five surfaces and their acceptable safeguards:
 
 A "structurally-protected field" means one of:
 `**T`, `*interface{}`, `chan T`, `func() T`, `unsafe.Pointer`,
-or `*<non-compound>` (`*string`, `*int`, `*bool`, etc.).
+or `*<non-compound>` (`*string`, `*int`, `*bool`, etc.),
+including a named type with such an underlying type (`type F func() string`).
 These are the types that `fmt.Printf` never dereferences —
 it always prints an address or header, regardless of the verb.
+The field may also hold the type nested in an anonymous struct, array, slice or map,
+but never behind a pointer.
 
 ### Existing library support
 

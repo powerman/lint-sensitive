@@ -215,6 +215,11 @@ type HandleGenericAny[T any] struct {
 	x fakesensitive.Handle[T] // want "is reachable through"
 }
 
+// FormatFuncWrapField — FormatFuncWrap holds a named func type, which fmt prints as an address.
+type FormatFuncWrapField struct {
+	x fakesensitive.FormatFuncWrap // No diagnostic: structurallySafe through a named func type.
+}
+
 // StarInnerExported — an exported *inner field: the pointer is
 // non-Formatter, so fd=true, disabling interfaces for the subtree.
 // The walk reaches fakesensitive.String inside inner and reports a leak.

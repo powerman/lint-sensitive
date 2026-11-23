@@ -108,3 +108,23 @@ func (*PtrRecv) String() string                { return "" }
 func (*PtrRecv) GoString() string              { return "" }
 func (*PtrRecv) MarshalJSON() ([]byte, error)  { return nil, nil }
 func (*PtrRecv) MarshalText() ([]byte, error)  { return nil, nil }
+
+// FuncT is a named func type: fmt prints it as an address, like an unnamed func.
+type FuncT func() string
+
+// NamedFuncWrap holds its value behind a named func type.
+// It does NOT implement any fmt interface.
+type NamedFuncWrap struct{ fn FuncT }
+
+// NestedRef holds a double pointer inside an anonymous struct.
+// It does NOT implement any fmt interface.
+type NestedRef struct{ v struct{ pp **string } }
+
+// ArrayRef holds a double pointer inside an array.
+// It does NOT implement any fmt interface.
+type ArrayRef struct{ a [1]**string }
+
+// FormatFuncWrap holds its value behind a named func type and implements fmt.Formatter.
+type FormatFuncWrap struct{ fn FuncT }
+
+func (FormatFuncWrap) Format(f fmt.State, verb rune) { fmt.Fprint(f, "[redacted]") }
