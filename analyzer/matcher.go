@@ -38,7 +38,6 @@ type typeClass struct {
 	jsonMarshaler    bool // t implements json.Marshaler
 	textMarshaler    bool // t implements encoding.TextMarshaler
 	structurallySafe bool
-	anyFmtInterface  bool // = fmtFormatter || fmtStringer || fmtGoStringer
 
 	// ptrOnly holds names of the methods above which only *t has,
 	// so they are not called on a t value and do not count as implemented.
@@ -102,11 +101,10 @@ func newMatcher(cfg Config) matcher {
 // addEntry adds one entry to the matcher,
 // determining whether it is a plain package path or a package.Type combination.
 func (m matcher) addEntry(entry string) {
-	if head, tail, ok := strings.CutLast(entry, "."); ok {
-		if head != "" && tail != "" && unicode.IsUpper(rune(tail[0])) {
-			m.types[packageType{Pkg: head, Name: tail}] = true
-			return
-		}
+	if head, tail, ok := strings.CutLast(entry, "."); ok &&
+		head != "" && tail != "" && unicode.IsUpper(rune(tail[0])) {
+		m.types[packageType{Pkg: head, Name: tail}] = true
+		return
 	}
 	m.packages[entry] = true
 }
@@ -119,40 +117,41 @@ func (m matcher) addEntry(entry string) {
 // When a package-only entry is used (no explicit type name),
 // interface and unexported types are not considered sensitive.
 func (m matcher) isSensitiveNamed(t types.Type) bool {
+	_, ok := m.sensitiveNamed(t)
+	return ok
+}
+
+// sensitiveNamed is like [matcher.isSensitiveNamed]
+// but also returns the unaliased named type.
+func (m matcher) sensitiveNamed(t types.Type) (*types.Named, bool) {
 	named, ok := types.Unalias(t).(*types.Named)
 	if !ok {
-		return false
+		return nil, false
 	}
 	pkg := named.Obj().Pkg()
 	if pkg == nil {
-		return false
+		return nil, false
 	}
 	if m.packages[pkg.Path()] {
 		// A package-only entry matches all named types,
 		// but interface and unexported types should not be treated as sensitive.
-		if _, isInterface := named.Underlying().(*types.Interface); isInterface {
-			return false
-		}
-		if !named.Obj().Exported() {
-			return false
-		}
-		return true
+		_, isInterface := named.Underlying().(*types.Interface)
+		return named, !isInterface && named.Obj().Exported()
 	}
-	return m.types[packageType{Pkg: pkg.Path(), Name: named.Obj().Name()}]
+	return named, m.types[packageType{Pkg: pkg.Path(), Name: named.Obj().Name()}]
 }
 
 // isSensitiveBasic reports whether t is a sensitive named type
 // whose underlying type is a basic kind (string, bool, numeric).
 // Only such types reveal their actual content when passed by value to builtin print/println.
 func (m matcher) isSensitiveBasic(t types.Type) bool {
-	if !m.isSensitiveNamed(t) {
+	named, ok := m.sensitiveNamed(t)
+	if !ok {
 		return false
 	}
-	// isSensitiveNamed confirmed t is *types.Named, so this assertion is safe.
 	// Only basic-kind underlying types leak their content through builtin print/println
 	// (string, bool, numeric).
 	// Slices, pointers, structs, etc. either print header info or don't compile.
-	named := types.Unalias(t).(*types.Named)
 	_, isBasic := named.Underlying().(*types.Basic)
 	return isBasic
 }
@@ -315,7 +314,7 @@ func typeKey(t *types.Named) string {
 	if t.TypeParams() != nil && t.TypeArgs() != nil {
 		typeName += "[" + typeArgsString(t.TypeArgs()) + "]"
 	}
-	return packageTypeName(t) + "." + typeName
+	return packagePath(t) + "." + typeName
 }
 
 // classify performs lazy classification of a configured safe type.
@@ -331,15 +330,15 @@ func (m matcher) classify(t *types.Named) *typeClass {
 		return tc
 	}
 
-	tc := &typeClass{}
-	tc.fmtFormatter = m.hasMethod(t, methodFormat)
-	tc.fmtStringer = m.hasMethod(t, methodString)
-	tc.fmtGoStringer = m.hasMethod(t, methodGoString)
-	tc.jsonMarshaler = m.hasMethod(t, methodMarshalJSON)
-	tc.textMarshaler = m.hasMethod(t, methodMarshalText)
-	tc.ptrOnly = m.ptrOnlyMethods(t)
-	tc.anyFmtInterface = tc.fmtFormatter || tc.fmtStringer || tc.fmtGoStringer
-	tc.structurallySafe = m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool))
+	tc := &typeClass{
+		fmtFormatter:     m.hasMethod(t, methodFormat),
+		fmtStringer:      m.hasMethod(t, methodString),
+		fmtGoStringer:    m.hasMethod(t, methodGoString),
+		jsonMarshaler:    m.hasMethod(t, methodMarshalJSON),
+		textMarshaler:    m.hasMethod(t, methodMarshalText),
+		ptrOnly:          m.ptrOnlyMethods(t),
+		structurallySafe: m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)),
+	}
 
 	m.typeClasses[key] = tc
 
@@ -349,8 +348,7 @@ func (m matcher) classify(t *types.Named) *typeClass {
 		// depend on the type's method set, which is the same regardless
 		// of generic instantiation. Global dedup avoids printing the
 		// same classification when the type appears in different packages.
-		debugKey := packageTypeName(t) + "." + t.Obj().Name()
-		if _, loaded := debugPrinted.LoadOrStore(debugKey, struct{}{}); !loaded {
+		if _, loaded := debugPrinted.LoadOrStore(qualifiedName(t), struct{}{}); !loaded {
 			m.debugClassify(t, tc)
 		}
 	}
@@ -365,54 +363,27 @@ func (m matcher) classify(t *types.Named) *typeClass {
 func (matcher) isQualifier(t types.Type) bool {
 	t = types.Unalias(t)
 	switch u := t.(type) {
-	case *types.Chan:
-		return true
-	case *types.Signature: // Func
+	case *types.Chan, *types.Signature: // Chan, Func
 		return true
 	case *types.Basic:
 		return u.Kind() == types.UnsafePointer
 	case *types.Pointer:
 		elem := types.Unalias(u.Elem())
 		switch e := elem.(type) {
-		case *types.Pointer: // **T
-			return true
-		case *types.Interface: // *Interface
-			return true
-		case *types.Basic: // *<non-compound> (*string, *int, etc.)
+		case *types.Pointer, *types.Interface, *types.Basic: // **T, *Interface, *<non-compound>
 			return true
 		case *types.TypeParam: // *TypeParam: safe iff constraint excludes compound kinds
-			return !typeParamHasCompoundConstraint(e)
+			// Conservative (compound) when the constraint is absent, any, or method-only.
+			return !typeElemHasCompoundTerm(e.Constraint())
 		case *types.Named:
 			// fmt dereferences a depth-0 pointer only for compound kinds,
 			// so a pointer to any non-compound named type (e.g. *MyString)
 			// prints as an address.
 			return !isCompoundKind(e)
-		default:
-			return false // *<compound> — pointee is a compound type
 		}
-	default:
-		return false
+		return false // *<compound> — pointee is a compound type
 	}
-}
-
-// typeParamHasCompoundConstraint reports whether any type-set term in the
-// type parameter's constraint is a compound kind (Struct/Slice/Array/Map).
-// Returns true (conservative: treat as potentially compound) when the
-// constraint is absent, unconstrained (any/interface{}), or method-only.
-func typeParamHasCompoundConstraint(tp *types.TypeParam) bool {
-	constraint := tp.Constraint()
-	if constraint == nil {
-		return true
-	}
-	t := types.Unalias(constraint)
-	if named, ok := t.(*types.Named); ok {
-		t = named.Underlying()
-	}
-	iface, ok := t.(*types.Interface)
-	if !ok {
-		return true
-	}
-	return interfaceHasCompoundTerm(iface)
+	return false
 }
 
 // interfaceHasCompoundTerm reports whether any type-set term in iface
@@ -493,7 +464,7 @@ func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) b
 // debugClassify prints one classification line to stderr.
 func (matcher) debugClassify(t *types.Named, tc *typeClass) {
 	log.Printf("sensitive type %s: Formatter=%v Stringer=%v GoStringer=%v json.Marshaler=%v encoding.TextMarshaler=%v structurallySafe=%v",
-		packageTypeName(t)+"."+t.Obj().Name(),
+		qualifiedName(t),
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
 		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe)
 }
@@ -520,12 +491,21 @@ func typeArgsString(targs *types.TypeList) string {
 	return b.String()
 }
 
-// packageTypeName returns the full package path of a named type for debug output.
-func packageTypeName(t *types.Named) string {
+// packagePath returns the full package path of a named type,
+// or an empty string for a type without a package.
+func packagePath(t *types.Named) string {
 	if pkg := t.Obj().Pkg(); pkg != nil {
 		return pkg.Path()
 	}
 	return ""
+}
+
+// qualifiedName returns the type name prefixed with the full package path, if it has one.
+func qualifiedName(t *types.Named) string {
+	if pkg := t.Obj().Pkg(); pkg != nil {
+		return pkg.Path() + "." + t.Obj().Name()
+	}
+	return t.Obj().Name()
 }
 
 // isCompoundKind reports whether t is a compound kind
@@ -565,17 +545,6 @@ func leakStep(named *types.Named) walkStep {
 		pos:  named.Obj().Pos(),
 		desc: "safe type " + shortTypeString(named),
 	}
-}
-
-// walkSafeType handles the safe-type terminal in the Formatter-termination walk.
-// Returns true if the safe type would leak under the current fd/bp state.
-func (matcher) walkSafeType(cls *typeClass, fd, bp bool) bool { //nolint:revive // By design.
-	if !fd && !bp {
-		return false // interfaces fire → safe
-	}
-	// Path is disabled. If the safe type implements any fmt interface
-	// AND has no structural-protection, content leaks.
-	return cls.anyFmtInterface && !cls.structurallySafe
 }
 
 // Linter logic (Formatter-termination reachability):
@@ -642,7 +611,7 @@ func (matcher) walkSafeType(cls *typeClass, fd, bp bool) bool { //nolint:revive 
 // under the given fd/bp (format-disabled / bad-verb-possible) state.
 // visited prevents infinite recursion on cyclic types;
 // it is keyed by the fd/bp state too, because a type is safe or leaking depending on it.
-// factorAt receives the first disable factor on the path, if any.
+// factorAt must not be nil; it receives the first disable factor on the path, if any.
 // When walk returns true, path receives the hops of the leaking path
 // ordered from the innermost (the safe type) to the outermost,
 // excluding the walked type itself.
@@ -656,10 +625,13 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 	}
 
 	// Safe-type terminal.
-	if m.isSensitiveNamed(t) {
-		named := types.Unalias(t).(*types.Named)
+	if named, ok := m.sensitiveNamed(t); ok {
+		// With fmt interfaces enabled the safe type is safe.
+		// Otherwise, if it implements any of them
+		// AND has no structural protection, its content leaks.
 		cls := m.classify(named)
-		leaks := m.walkSafeType(cls, fd, bp)
+		leaks := (fd || bp) &&
+			(cls.fmtFormatter || cls.fmtStringer || cls.fmtGoStringer) && !cls.structurallySafe
 		if leaks {
 			*path = append(*path, leakStep(named))
 		}
@@ -671,7 +643,8 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 	switch u := t.(type) {
 	case *types.Pointer:
 		// A Formatter pointer reached with fd==false AND bp==false is a safe terminal.
-		if m.hasMethod(t, methodFormat) && !fd && !bp {
+		isFormatter := m.hasMethod(t, methodFormat)
+		if isFormatter && !fd && !bp {
 			return false
 		}
 		// Under badVerb (bp=true) at depth 0, fmt only dereferences the
@@ -682,23 +655,15 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		}
 		// Non-Formatter pointer to compound (or reached under disable):
 		// badVerb is possible, and the pointee can be dereferenced.
-		if factorAt == nil || factorAt.kind == "" {
-			if factorAt == nil {
-				factorAt = &disableFactor{
-					kind: factorNonFormatterPointer,
-					name: u.Elem().String(),
-				}
-			} else {
-				factorAt.kind = factorNonFormatterPointer
-				factorAt.name = u.Elem().String()
-			}
+		if factorAt.kind == "" {
+			*factorAt = disableFactor{kind: factorNonFormatterPointer, name: u.Elem().String()}
 		}
 		if !m.walk(u.Elem(), true, true, visited, factorAt, path) {
 			return false
 		}
 		// A Formatter pointer gets here only under fd/bp, so it is not called "non-Formatter".
 		step := walkStep{desc: "pointer to " + shortTypeString(u.Elem())}
-		if !m.hasMethod(t, methodFormat) {
+		if !isFormatter {
 			step.desc = "non-Formatter " + step.desc
 		}
 		if named, ok := types.Unalias(u.Elem()).(*types.Named); ok {
@@ -711,15 +676,11 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		for f := range u.Fields() {
 			fd2 := fd || !f.Exported()
 			newFactor := factorAt
-			if !f.Exported() && (factorAt == nil || factorAt.kind == "") {
-				tmp := &disableFactor{
-					kind: factorUnexportedField,
-					name: f.Name(),
-				}
-				newFactor = tmp
+			if !f.Exported() && factorAt.kind == "" {
+				newFactor = &disableFactor{kind: factorUnexportedField, name: f.Name()}
 			}
 			if m.walk(f.Type(), fd2, bp, visited, newFactor, path) {
-				if newFactor != factorAt && factorAt != nil && factorAt.kind == "" {
+				if newFactor != factorAt && factorAt.kind == "" {
 					*factorAt = *newFactor
 				}
 				kind := "field"
