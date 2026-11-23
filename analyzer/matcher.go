@@ -157,17 +157,31 @@ func (m matcher) isSensitiveBasic(t types.Type) bool {
 	return isBasic
 }
 
-// shouldCheck reports whether diagnostics should be emitted for the given position.
+// newShouldCheck returns a function which reports
+// whether diagnostics should be emitted for the given position.
 // When skipTests is true, positions in _test.go files are skipped.
 // When skipGenerated is true, positions in generated files are skipped.
-func (m matcher) shouldCheck(pass *analysis.Pass, pos token.Pos) bool {
-	if m.skipTests && inTestFile(pass, pos) {
-		return false
+//
+// The result is bound to pass and must not outlive it:
+// the set of generated files is computed once here,
+// because the matcher is shared between passes and cannot hold it.
+func (m matcher) newShouldCheck(pass *analysis.Pass) func(pos token.Pos) bool {
+	var generated map[string]bool
+	if m.skipGenerated {
+		generated = generatedFiles(pass)
 	}
-	if m.skipGenerated && inGeneratedFile(pass, pos) {
-		return false
+	return func(pos token.Pos) bool {
+		if m.skipTests && inTestFile(pass, pos) {
+			return false
+		}
+		if m.skipGenerated {
+			f := pass.Fset.File(pos)
+			if f != nil && generated[f.Name()] {
+				return false
+			}
+		}
+		return true
 	}
-	return true
 }
 
 // inTestFile reports whether pos falls within a _test.go file.
@@ -176,20 +190,17 @@ func inTestFile(pass *analysis.Pass, pos token.Pos) bool {
 	return f != nil && strings.HasSuffix(f.Name(), "_test.go")
 }
 
-// inGeneratedFile reports whether pos falls within a generated file
+// generatedFiles returns the names of the pass files which are generated
 // (a file whose first line matches the standard
 // "// Code generated ... DO NOT EDIT." pattern).
-func inGeneratedFile(pass *analysis.Pass, pos token.Pos) bool {
-	f := pass.Fset.File(pos)
-	if f == nil {
-		return false
-	}
+func generatedFiles(pass *analysis.Pass) map[string]bool {
+	res := make(map[string]bool)
 	for _, file := range pass.Files {
-		if pass.Fset.Position(file.Pos()).Filename == f.Name() {
-			return ast.IsGenerated(file)
+		if ast.IsGenerated(file) {
+			res[pass.Fset.Position(file.Pos()).Filename] = true
 		}
 	}
-	return false
+	return res
 }
 
 // Names of the fmt/encoding interface methods the analyzer relies on.

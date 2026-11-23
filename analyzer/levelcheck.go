@@ -42,7 +42,7 @@ type typeRef struct {
 // if it matches a configured safe type and its position is not skipped
 // by skip-tests or skip-generated.
 func (m matcher) collectType(
-	pass *analysis.Pass,
+	shouldCheck func(token.Pos) bool,
 	obj types.Object,
 	pos token.Pos,
 	refs []typeRef,
@@ -52,7 +52,7 @@ func (m matcher) collectType(
 		return refs
 	}
 	named, ok := tn.Type().(*types.Named)
-	if !ok || !m.isSensitiveNamed(named) || !m.shouldCheck(pass, pos) {
+	if !ok || !m.isSensitiveNamed(named) || !shouldCheck(pos) {
 		return refs
 	}
 	return append(refs, typeRef{pos: pos, named: named})
@@ -68,7 +68,7 @@ func (m matcher) collectType(
 // so a type used both there and in a regular file is reported in the regular one.
 // References are collected then sorted by position so the diagnostic always
 // lands at the first occurrence (deterministic).
-func (m matcher) runReliabilityLevels(pass *analysis.Pass) {
+func (m matcher) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(token.Pos) bool) {
 	demanded := requires{
 		marshalJSONSafe: m.requireMarshalJSON,
 		marshalTextSafe: m.requireMarshalText,
@@ -86,12 +86,12 @@ func (m matcher) runReliabilityLevels(pass *analysis.Pass) {
 
 	// Local type declarations.
 	for id, obj := range pass.TypesInfo.Defs {
-		refs = m.collectType(pass, obj, id.Pos(), refs)
+		refs = m.collectType(shouldCheck, obj, id.Pos(), refs)
 	}
 
 	// External type references.
 	for id, obj := range pass.TypesInfo.Uses {
-		refs = m.collectType(pass, obj, id.Pos(), refs)
+		refs = m.collectType(shouldCheck, obj, id.Pos(), refs)
 	}
 
 	// Sort by position for deterministic diagnostic placement.

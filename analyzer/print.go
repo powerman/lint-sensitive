@@ -28,6 +28,7 @@ func newPrintAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis.
 // runPrint is the shared core used by both flag-driven and New()-based print analyzers.
 func runPrint(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	shouldCheck := m.newShouldCheck(pass)
 
 	nodeFilter := []ast.Node{(*ast.CallExpr)(nil)}
 	inspectResult.Preorder(nodeFilter, func(n ast.Node) {
@@ -52,7 +53,7 @@ func runPrint(pass *analysis.Pass, m matcher) (any, error) {
 			return
 		}
 
-		if !m.shouldCheck(pass, call.Pos()) {
+		if !shouldCheck(call.Pos()) {
 			return
 		}
 

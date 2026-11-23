@@ -91,6 +91,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	formatterStructs := m.formatterStructs(pass, inspectResult)
+	shouldCheck := m.newShouldCheck(pass)
 
 	nodeFilter := []ast.Node{(*ast.StructType)(nil)}
 	inspectResult.Preorder(nodeFilter, func(n ast.Node) {
@@ -107,7 +108,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 			return
 		}
 		for f := range st2.Fields() {
-			if !m.shouldCheck(pass, f.Pos()) {
+			if !shouldCheck(f.Pos()) {
 				continue
 			}
 			var factor disableFactor
@@ -126,7 +127,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 		}
 	})
 
-	m.runReliabilityLevels(pass)
+	m.runReliabilityLevels(pass, shouldCheck)
 
 	//nolint:nilnil // Returning nil, nil is standard for go/analysis analyzers.
 	return nil, nil
