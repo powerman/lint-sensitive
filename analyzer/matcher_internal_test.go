@@ -670,6 +670,58 @@ func TestDebugDedup(t *testing.T) {
 	}
 }
 
+// TestDebugDedupInstances verifies that instances of one generic type
+// with different classification are both printed,
+// because structurallySafe depends on the type arguments.
+// Not parallel — clears global debugPrinted state.
+//
+//nolint:paralleltest // Uses global state, cannot run in parallel.
+func TestDebugDedupInstances(t *testing.T) {
+	debugPrinted = sync.Map{}
+
+	pkg := types.NewPackage("example.com/testgeneric", "testgeneric")
+	tp := types.NewTypeParam(
+		types.NewTypeName(token.NoPos, pkg, "T", nil),
+		types.NewInterfaceType(nil, nil),
+	)
+	gen := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "H", nil), nil, nil)
+	gen.SetTypeParams([]*types.TypeParam{tp})
+	gen.SetUnderlying(types.NewStruct([]*types.Var{
+		types.NewField(token.NoPos, pkg, "p", types.NewPointer(tp), false),
+	}, nil))
+
+	strInst, err := types.Instantiate(nil, gen, []types.Type{types.Typ[types.String]}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	structInst, err := types.Instantiate(nil, gen, []types.Type{types.NewStruct(nil, nil)}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	defer log.SetOutput(os.Stderr)
+	c := newChecker(newMatcher(Config{Debug: true, Types: []string{"example.com/testgeneric.H"}}))
+
+	c.classify(strInst.(*types.Named))
+	c.classify(structInst.(*types.Named))
+
+	output := buf.String()
+	for _, want := range []string{
+		"example.com/testgeneric.H[string]: ",
+		"structurallySafe=true",
+		"structurallySafe=false",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("debug output should contain %q, got:\n%s", want, output)
+		}
+	}
+	if lines := strings.Count(output, "sensitive type"); lines != 2 {
+		t.Errorf("expected 2 debug lines, got %d\nfull output:\n%s", lines, output)
+	}
+}
+
 // fmtStateType is a stand-in for fmt.State.
 // hasMethod recognizes it by package path and name only, so no real fmt import is needed.
 var fmtStateType = types.NewNamed(

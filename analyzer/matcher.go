@@ -28,8 +28,11 @@ type matcher struct {
 }
 
 // checker is the per-pass state of the fields analyzer.
-// Its cache is keyed by type identity,
+// Its caches are keyed by type identity,
 // which is exact only within one pass, so a checker must not outlive its pass.
+// A process-wide cache would keep the types of every pass alive in long-running drivers
+// (gopls, golangci-lint daemons), and a string key cannot tell apart local types
+// of different functions which share a name.
 type checker struct {
 	matcher
 
@@ -53,8 +56,10 @@ type typeClass struct {
 	ptrOnly map[string]bool
 }
 
-// debugPrinted dedups debug output across packages,
-// so a type seen in several packages is classified in the output only once.
+// debugPrinted holds the debug lines already printed.
+// It is keyed by the whole line, which includes the type arguments,
+// so instances of one generic type with different classification are all printed,
+// while the same type seen in several packages is printed only once.
 // The alternative would require plumbing shared state
 // across every per-package matcher in the flag-driven path,
 // which the go/analysis framework does not support.
@@ -333,14 +338,7 @@ func (c *checker) classify(t *types.Named) *typeClass {
 	c.classes.Set(t, tc)
 
 	if c.debug {
-		// Use base type name (without type args) for dedup —
-		// classification characteristics (Formatter, Stringer, etc.)
-		// depend on the type's method set, which is the same regardless
-		// of generic instantiation. Global dedup avoids printing the
-		// same classification when the type appears in different packages.
-		if _, loaded := debugPrinted.LoadOrStore(qualifiedName(t), struct{}{}); !loaded {
-			c.debugClassify(t, tc)
-		}
+		debugClassify(t, tc)
 	}
 
 	return tc
@@ -451,12 +449,16 @@ func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) b
 	}
 }
 
-// debugClassify prints one classification line to stderr.
-func (matcher) debugClassify(t *types.Named, tc *typeClass) {
-	log.Printf("sensitive type %s: Formatter=%v Stringer=%v GoStringer=%v json.Marshaler=%v encoding.TextMarshaler=%v structurallySafe=%v",
-		qualifiedName(t),
+// debugClassify prints one classification line to stderr
+// unless the same line was already printed.
+func debugClassify(t *types.Named, tc *typeClass) {
+	line := fmt.Sprintf("sensitive type %s: Formatter=%v Stringer=%v GoStringer=%v json.Marshaler=%v encoding.TextMarshaler=%v structurallySafe=%v",
+		t,
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
 		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe)
+	if _, loaded := debugPrinted.LoadOrStore(line, struct{}{}); !loaded {
+		log.Print(line)
+	}
 }
 
 // qualifiedName returns the type name prefixed with the full package path, if it has one.
