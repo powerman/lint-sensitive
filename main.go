@@ -17,8 +17,6 @@ import (
 	"github.com/powerman/lint-sensitive/analyzer"
 )
 
-const unknown = "unknown"
-
 var errUnsupportedV = errors.New("use -V=full")
 
 func main() {
@@ -46,7 +44,11 @@ func (versionFlag) Set(s string) error {
 		return fmt.Errorf("-V=%s: %w", s, errUnsupportedV)
 	}
 	progname := filepath.Base(os.Args[0])
-	fmt.Printf("%s version %s buildID=%s\n", progname, resolveVersion(), buildID())
+	id, err := buildID()
+	if err != nil {
+		return fmt.Errorf("-V=full: %w", err)
+	}
+	fmt.Printf("%s version %s buildID=%s\n", progname, resolveVersion(), id)
 	os.Exit(0) //nolint:revive // -V=full protocol: terminate after printing version, same as the framework
 	return nil
 }
@@ -64,22 +66,23 @@ func resolveVersion() string {
 	return bi.Main.Version
 }
 
-// buildID returns a content hash of the running executable, mirroring the
-// framework's -V=full output so `go vet -vettool=` change-detection keeps working.
-func buildID() string {
+// buildID returns a content hash of the running executable,
+// mirroring the framework's -V=full output,
+// so `go vet -vettool=` change-detection keeps working.
+func buildID() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return unknown
+		return "", err
 	}
 	f, err := os.Open(exe) //nolint:gosec // exe comes from os.Executable(), not user input
 	if err != nil {
-		return unknown
+		return "", err
 	}
 	defer f.Close() //nolint:errcheck // read-only; close error is not actionable
 	h := sha256.New()
 	_, err = io.Copy(h, f)
 	if err != nil {
-		return unknown
+		return "", err
 	}
-	return fmt.Sprintf("%02x", h.Sum(nil))
+	return fmt.Sprintf("%02x", h.Sum(nil)), nil
 }
