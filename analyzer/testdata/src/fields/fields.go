@@ -216,14 +216,14 @@ type HandleGenericAny[T any] struct {
 }
 
 // StarInnerExported — an exported *inner field: the pointer is
-// non-Formatter, so bp=true, disabling interfaces for the subtree.
+// non-Formatter, so fd=true, disabling interfaces for the subtree.
 // The walk reaches fakesensitive.String inside inner and reports a leak.
 type StarInnerExported struct {
 	M *inner // want "is reachable through"
 }
 
 // StarInnerUnexported — an unexported *inner field: fd=true from
-// the field itself AND bp=true from the non-Formatter pointer.
+// the field itself AND from the non-Formatter pointer.
 // inner is *<compound> (a struct), so badVerb dereferences it.
 // The safe type fakesensitive.String inside inner leaks.
 type StarInnerUnexported struct {

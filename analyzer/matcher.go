@@ -526,7 +526,6 @@ func isCompoundKind(t types.Type) bool {
 type walkKey struct {
 	t  types.Type
 	fd bool
-	bp bool
 }
 
 // walkStep is one hop of the path which walk found from a checked field to a leaking safe type.
@@ -609,9 +608,12 @@ func leakStep(named *types.Named) walkStep {
 //
 // walk is the Formatter-termination walk.
 // It returns true when a safe type reachable through t would leak its secret content
-// under the given fd/bp (format-disabled / bad-verb-possible) state.
+// under the given fd state.
+// fd means that fmt interfaces may not fire here:
+// either an unexported field was entered,
+// or a non-Formatter pointer was passed, after which badVerb may print the pointee.
 // visited prevents infinite recursion on cyclic types;
-// it is keyed by the fd/bp state too, because a type is safe or leaking depending on it.
+// it is keyed by fd too, because a type is safe or leaking depending on it.
 // factorAt must not be nil;
 // when walk returns true, it holds the first disable factor on the path, if any.
 // It is left unchanged when walk returns false.
@@ -620,9 +622,9 @@ func leakStep(named *types.Named) walkStep {
 // excluding the walked type itself.
 //
 //nolint:funlen,gocognit // Walk matches fmt complexity; extracting would harm readability.
-func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep) bool { //nolint:revive // control flags by design
+func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep) bool { //nolint:revive // control flag by design
 	t = types.Unalias(t)
-	key := walkKey{t: t, fd: fd, bp: bp}
+	key := walkKey{t: t, fd: fd}
 	if visited[key] {
 		return false
 	}
@@ -633,7 +635,7 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		// Otherwise, if it implements any of them
 		// AND has no structural protection, its content leaks.
 		cls := m.classify(named)
-		leaks := (fd || bp) &&
+		leaks := fd &&
 			(cls.fmtFormatter || cls.fmtStringer || cls.fmtGoStringer) && !cls.structurallySafe
 		if leaks {
 			*path = append(*path, leakStep(named))
@@ -645,12 +647,12 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 
 	switch u := t.(type) {
 	case *types.Pointer:
-		// A Formatter pointer reached with fd==false AND bp==false is a safe terminal.
+		// A Formatter pointer reached with fd==false is a safe terminal.
 		isFormatter := m.hasMethod(t, methodFormat)
-		if isFormatter && !fd && !bp {
+		if isFormatter && !fd {
 			return false
 		}
-		// Under badVerb (bp=true) at depth 0, fmt only dereferences the
+		// Under badVerb at depth 0, fmt only dereferences the
 		// pointer when the pointee is a compound kind (Struct/Slice/Array/Map).
 		// *<non-compound> pointers always go to fmtPointer → address printed.
 		if !isCompoundKind(u.Elem()) {
@@ -664,11 +666,11 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		if factor.kind == "" {
 			factor = disableFactor{kind: factorNonFormatterPointer, name: u.Elem().String()}
 		}
-		if !m.walk(u.Elem(), true, true, visited, &factor, path) {
+		if !m.walk(u.Elem(), true, visited, &factor, path) {
 			return false
 		}
 		*factorAt = factor
-		// A Formatter pointer gets here only under fd/bp, so it is not called "non-Formatter".
+		// A Formatter pointer gets here only under fd, so it is not called "non-Formatter".
 		step := walkStep{desc: "pointer to " + shortTypeString(u.Elem())}
 		if !isFormatter {
 			step.desc = "non-Formatter " + step.desc
@@ -686,7 +688,7 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 			if !f.Exported() && factorAt.kind == "" {
 				newFactor = &disableFactor{kind: factorUnexportedField, name: f.Name()}
 			}
-			if m.walk(f.Type(), fd2, bp, visited, newFactor, path) {
+			if m.walk(f.Type(), fd2, visited, newFactor, path) {
 				if newFactor != factorAt && factorAt.kind == "" {
 					*factorAt = *newFactor
 				}
@@ -704,14 +706,14 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		return false
 
 	case *types.Slice:
-		return m.walk(u.Elem(), fd, bp, visited, factorAt, path)
+		return m.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Array:
-		return m.walk(u.Elem(), fd, bp, visited, factorAt, path)
+		return m.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Map:
-		return m.walk(u.Key(), fd, bp, visited, factorAt, path) ||
-			m.walk(u.Elem(), fd, bp, visited, factorAt, path)
+		return m.walk(u.Key(), fd, visited, factorAt, path) ||
+			m.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Interface:
 		// Flag only SecretExposer interfaces — those that have an ExposeSecret method,
@@ -722,7 +724,7 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		// and flagging them causes a torrent of false positives from external library
 		// internals (e.g. prometheus.Metric or error deep inside a metrics struct).
 		if m.isSecretExposer(u) {
-			return fd || bp
+			return fd
 		}
 		return false
 
@@ -732,11 +734,11 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 	case *types.Named:
 		// A named type with fmt.Formatter reached with fmt interfaces still enabled
 		// redacts under every verb, so it is a safe terminal (same trust as *types.Pointer).
-		// Under fd/bp the method may not fire, so it must not be trusted there.
-		if !fd && !bp && m.hasMethod(t, methodFormat) {
+		// Under fd the method may not fire, so it must not be trusted there.
+		if !fd && m.hasMethod(t, methodFormat) {
 			return false
 		}
-		if !m.walk(u.Underlying(), fd, bp, visited, factorAt, path) {
+		if !m.walk(u.Underlying(), fd, visited, factorAt, path) {
 			return false
 		}
 		// A SecretExposer interface is a terminal which has no step of its own,
