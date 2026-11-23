@@ -8,7 +8,6 @@ import (
 	"log"
 	"strings"
 	"sync"
-	"unicode"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -98,11 +97,13 @@ func newMatcher(cfg Config) matcher {
 	return m
 }
 
-// addEntry adds one entry to the matcher,
-// determining whether it is a plain package path or a package.Type combination.
+// addEntry adds one entry to the matcher.
+// An entry whose part after the last dot is an exported identifier names a type,
+// any other entry is an import path
+// (which may itself end with a dot-suffix, e.g. "gopkg.in/yaml.v3").
 func (m matcher) addEntry(entry string) {
 	if head, tail, ok := strings.CutLast(entry, "."); ok &&
-		head != "" && tail != "" && unicode.IsUpper(rune(tail[0])) {
+		head != "" && token.IsIdentifier(tail) && token.IsExported(tail) {
 		m.types[packageType{Pkg: head, Name: tail}] = true
 		return
 	}

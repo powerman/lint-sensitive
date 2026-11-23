@@ -158,6 +158,11 @@ func TestAddEntryPackageTypeSyntax(t *testing.T) {
 		{entry: "my/pkg._Secret", wantPkg: "my/pkg._Secret", isPkg: true}, // underscore not upper
 		{entry: "Secret", wantPkg: "Secret", isPkg: true},                 // no slash, single word, lowercase = pkg
 		{entry: "Secret.Type", wantT: packageType{Pkg: "Secret", Name: "Type"}, isType: true},
+		{entry: "example.Com/secrets", wantPkg: "example.Com/secrets", isPkg: true}, // dot in the domain
+		{entry: "my/pkg.ñame", wantPkg: "my/pkg.ñame", isPkg: true},                 // 0xC3 is not an upper-case byte
+		{entry: "my/pkg.Ñame", wantT: packageType{Pkg: "my/pkg", Name: "Ñame"}, isType: true},
+		{entry: "my/pkg.Handle[string]", wantPkg: "my/pkg.Handle[string]", isPkg: true},
+		{entry: "gopkg.in/yaml.v3", wantPkg: "gopkg.in/yaml.v3", isPkg: true},
 	}
 
 	for _, tt := range tests {
