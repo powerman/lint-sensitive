@@ -318,3 +318,19 @@ type fmtWrapperHolder struct {
 type FmtWrapperBehindPointer struct {
 	P *fmtWrapperHolder // want "is reachable through"
 }
+
+// fmtNestedWrapper — anonymous structs nested in a Formatter type are reachable only through it.
+type fmtNestedWrapper struct {
+	Inner struct {
+		s fakesensitive.String // No diagnostic: covered by fmtNestedWrapper.Format.
+	}
+}
+
+func (fmtNestedWrapper) Format(fmt.State, rune) {}
+
+// fmtSliceWrapper — the same holds for a non-struct Formatter type.
+type fmtSliceWrapper []struct {
+	s fakesensitive.String // No diagnostic: covered by fmtSliceWrapper.Format.
+}
+
+func (fmtSliceWrapper) Format(fmt.State, rune) {}

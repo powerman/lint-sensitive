@@ -46,7 +46,8 @@ func formatDiagnostic(field *types.Var, factor *disableFactor) string {
 		field.Name(), via)
 }
 
-// formatterStructs returns struct types declared by a named type which implements [fmt.Formatter].
+// formatterStructs returns struct types written inside the declaration of a named type
+// which implements [fmt.Formatter], including anonymous structs nested in it.
 // Their fields are not checked:
 // such a type is a safe terminal wherever fmt can reach it with interfaces enabled,
 // and the cases where it cannot are reported at the field which holds the type.
@@ -54,13 +55,16 @@ func (m matcher) formatterStructs(pass *analysis.Pass, in *inspector.Inspector) 
 	res := make(map[*ast.StructType]bool)
 	in.Preorder([]ast.Node{(*ast.TypeSpec)(nil)}, func(n ast.Node) {
 		ts := n.(*ast.TypeSpec) //nolint:forcetypeassert // Guaranteed by the node filter.
-		st, ok := ts.Type.(*ast.StructType)
-		if !ok {
+		obj := pass.TypesInfo.Defs[ts.Name]
+		if obj == nil || !m.hasMethod(obj.Type(), methodFormat) {
 			return
 		}
-		if obj := pass.TypesInfo.Defs[ts.Name]; obj != nil && m.hasMethod(obj.Type(), methodFormat) {
-			res[st] = true
-		}
+		ast.Inspect(ts.Type, func(n ast.Node) bool {
+			if st, ok := n.(*ast.StructType); ok {
+				res[st] = true
+			}
+			return true
+		})
 	})
 	return res
 }
