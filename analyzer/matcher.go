@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
@@ -533,6 +534,25 @@ type walkKey struct {
 	bp bool
 }
 
+// walkStep is one hop of the path which walk found from a checked field to a leaking safe type.
+type walkStep struct {
+	pos  token.Pos // May be token.NoPos or unresolvable, e.g. for types without a declaration.
+	desc string
+}
+
+// shortTypeString formats t with package names instead of package paths.
+func shortTypeString(t types.Type) string {
+	return types.TypeString(t, func(p *types.Package) string { return p.Name() })
+}
+
+// leakStep describes the safe type at the end of a leaking path.
+func leakStep(named *types.Named) walkStep {
+	return walkStep{
+		pos:  named.Obj().Pos(),
+		desc: "safe type " + shortTypeString(named),
+	}
+}
+
 // walkSafeType handles the safe-type terminal in the Formatter-termination walk.
 // Returns true if the safe type would leak under the current fd/bp state.
 func (matcher) walkSafeType(cls *typeClass, fd, bp bool) bool { //nolint:revive // By design.
@@ -609,9 +629,12 @@ func (matcher) walkSafeType(cls *typeClass, fd, bp bool) bool { //nolint:revive 
 // visited prevents infinite recursion on cyclic types;
 // it is keyed by the fd/bp state too, because a type is safe or leaking depending on it.
 // factorAt receives the first disable factor on the path, if any.
+// When walk returns true, path receives the hops of the leaking path
+// ordered from the innermost (the safe type) to the outermost,
+// excluding the walked type itself.
 //
 //nolint:funlen,gocognit // Walk matches fmt complexity; extracting would harm readability.
-func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, factorAt *disableFactor) bool { //nolint:revive // control flags by design
+func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep) bool { //nolint:revive // control flags by design
 	t = types.Unalias(t)
 	key := walkKey{t: t, fd: fd, bp: bp}
 	if visited[key] {
@@ -622,7 +645,11 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 	if m.isSensitiveNamed(t) {
 		named := types.Unalias(t).(*types.Named)
 		cls := m.classify(named)
-		return m.walkSafeType(cls, fd, bp)
+		leaks := m.walkSafeType(cls, fd, bp)
+		if leaks {
+			*path = append(*path, leakStep(named))
+		}
+		return leaks
 	}
 
 	visited[key] = true
@@ -652,7 +679,15 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 				factorAt.name = u.Elem().String()
 			}
 		}
-		return m.walk(u.Elem(), true, true, visited, factorAt)
+		if !m.walk(u.Elem(), true, true, visited, factorAt, path) {
+			return false
+		}
+		step := walkStep{desc: "non-Formatter pointer to " + shortTypeString(u.Elem())}
+		if named, ok := types.Unalias(u.Elem()).(*types.Named); ok {
+			step.pos = named.Obj().Pos()
+		}
+		*path = append(*path, step)
+		return true
 
 	case *types.Struct:
 		for f := range u.Fields() {
@@ -665,24 +700,32 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 				}
 				newFactor = tmp
 			}
-			if m.walk(f.Type(), fd2, bp, visited, newFactor) {
+			if m.walk(f.Type(), fd2, bp, visited, newFactor, path) {
 				if newFactor != factorAt && factorAt != nil && factorAt.kind == "" {
 					*factorAt = *newFactor
 				}
+				kind := "field"
+				if !f.Exported() {
+					kind = "unexported field"
+				}
+				*path = append(*path, walkStep{
+					pos:  f.Pos(),
+					desc: fmt.Sprintf("%s %q of type %s", kind, f.Name(), shortTypeString(f.Type())),
+				})
 				return true
 			}
 		}
 		return false
 
 	case *types.Slice:
-		return m.walk(u.Elem(), fd, bp, visited, factorAt)
+		return m.walk(u.Elem(), fd, bp, visited, factorAt, path)
 
 	case *types.Array:
-		return m.walk(u.Elem(), fd, bp, visited, factorAt)
+		return m.walk(u.Elem(), fd, bp, visited, factorAt, path)
 
 	case *types.Map:
-		return m.walk(u.Key(), fd, bp, visited, factorAt) ||
-			m.walk(u.Elem(), fd, bp, visited, factorAt)
+		return m.walk(u.Key(), fd, bp, visited, factorAt, path) ||
+			m.walk(u.Elem(), fd, bp, visited, factorAt, path)
 
 	case *types.Interface:
 		// Flag only SecretExposer interfaces — those that have an ExposeSecret method,
@@ -707,7 +750,15 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		if !fd && !bp && m.hasMethod(t, methodFormat) {
 			return false
 		}
-		return m.walk(u.Underlying(), fd, bp, visited, factorAt)
+		if !m.walk(u.Underlying(), fd, bp, visited, factorAt, path) {
+			return false
+		}
+		// A SecretExposer interface is a terminal which has no step of its own,
+		// because the walk sees only the unnamed interface type.
+		if _, ok := u.Underlying().(*types.Interface); ok {
+			*path = append(*path, leakStep(u))
+		}
+		return true
 	default:
 		return false
 	}

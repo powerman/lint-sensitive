@@ -82,11 +82,12 @@ func TestExampleEndToEnd(t *testing.T) {
 	}
 
 	// Also verify total line count matches.
-	// Each diagnostic is one line in the output.
+	// Each diagnostic is one line in the output,
+	// followed by lines of its related information, which have a tab after the position.
 	lines := strings.Split(strings.TrimSpace(outStr), "\n")
 	var diagLines int
 	for _, l := range lines {
-		if strings.Contains(l, "sensitive") {
+		if strings.Contains(l, ": sensitive ") {
 			diagLines++
 		}
 	}

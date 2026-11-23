@@ -121,6 +121,14 @@ type secretExposerField struct {
 	s fakesensitive.Secret[string] // want "is reachable through"
 }
 
+// ExposerField — a user-defined named SecretExposer interface (not a configured safe type)
+// is flagged the same way.
+type exposer interface{ ExposeSecret() string }
+
+type exposerField struct {
+	e exposer // want "is reachable through"
+}
+
 // EmptyInterfaceField — any/interface{} is NOT flagged:
 // the static analyzer cannot know what concrete type will be stored.
 type emptyInterfaceField struct {

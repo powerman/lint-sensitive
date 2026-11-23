@@ -3,7 +3,9 @@ package analyzer
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/inspect"
@@ -44,6 +46,21 @@ func formatDiagnostic(field *types.Var, factor *disableFactor) string {
 			"and the field is not structurally protected "+
 			"— fmt can print its secret content",
 		field.Name(), via)
+}
+
+// relatedInformation converts the path found by [matcher.walk] into diagnostic's related entries.
+// Entries go from the outermost hop (right below the reported field) to the safe type.
+// Hops without a resolvable position are dropped:
+// positions of types from other packages are not always available.
+func relatedInformation(fset *token.FileSet, path []walkStep) []analysis.RelatedInformation {
+	var related []analysis.RelatedInformation
+	for _, s := range slices.Backward(path) {
+		if posn := fset.Position(s.pos); !posn.IsValid() {
+			continue
+		}
+		related = append(related, analysis.RelatedInformation{Pos: s.pos, Message: s.desc})
+	}
+	return related
 }
 
 // formatterStructs returns struct types written inside the declaration of a named type
@@ -98,9 +115,13 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 			if fd {
 				factor = disableFactor{kind: "unexportedField", name: f.Name()}
 			}
-			if m.walk(f.Type(), fd, false, make(map[walkKey]bool), &factor) {
-				msg := formatDiagnostic(f, &factor)
-				pass.Report(analysis.Diagnostic{Pos: f.Pos(), Message: msg})
+			var path []walkStep
+			if m.walk(f.Type(), fd, false, make(map[walkKey]bool), &factor, &path) {
+				pass.Report(analysis.Diagnostic{
+					Pos:     f.Pos(),
+					Message: formatDiagnostic(f, &factor),
+					Related: relatedInformation(pass.Fset, path),
+				})
 			}
 		}
 	})
