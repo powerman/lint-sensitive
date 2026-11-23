@@ -5,6 +5,99 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-23
+
+### 🔔 Changed
+
+- **(analyzer)** Hint at pointer-receiver-only methods in reliability diagnostics by @powerman in [085773d]
+- **(analyzer)** Attach leak path to sensitivefields diagnostics by @powerman in [35dd1ca]
+- Order tasks in mise.toml like the template by @powerman in [8d59bf4]
+
+### 🐛 Fixed
+
+- **(analyzer)** Wire -require-marshal-json flag to its config field by @powerman in [11efcb3]
+- **(analyzer)** Honour skip-tests and skip-generated in reliability checks by @powerman in [2b27f50]
+- **(analyzer)** Key walk memoization by fd/bp state by @powerman in [b7415a1]
+- **(analyzer)** Treat pointer to non-compound named type as qualifier by @powerman in [903e6f0]
+- **(analyzer)** Verify method signatures and ignore pointer-receiver-only methods by @powerman in [93070c0]
+- **(analyzer)** Trust named types implementing fmt.Formatter as safe terminals by @powerman in [87135d5]
+- **(analyzer)** Reword sensitivefields diagnostic by @powerman in [7a3a553]
+- **(analyzer)** Skip anonymous structs nested in fmt.Formatter types by @powerman in [ceb162f]
+- **(analyzer)** Do not label Formatter pointers as non-Formatter in leak path by @powerman in [048d3e0]
+- **(analyzer)** Do not report a stale disable factor as the leak reason by @powerman in [1bbcb1c]
+- **(analyzer)** Skip generated files with //line directives by @powerman in [ddaf4e3]
+- **(analyzer)** Parse only exported identifiers as type entries by @powerman in [47b721c]
+- **(analyzer)** Classify same-named local types separately by @powerman in [ad72bea]
+- **(analyzer)** Print debug line for every generic instance by @powerman in [5fb1891]
+- **(analyzer)** Check generic instances and aliases in reliability levels by @powerman in [321a7cd]
+- **(analyzer)** Recognize named and nested structural protection by @powerman in [ea8f5b1]
+- **(example)** Build with Go 1.27.3 by @powerman in [87937a7]
+- Build with Go 1.27.3 by @powerman in [a00e9c1]
+- Fail -V=full when the build ID cannot be computed by @powerman in [f62db45]
+
+### ⚡ Performance
+
+- **(analyzer)** Compute generated files once per pass by @powerman in [8afc870]
+- **(analyzer)** Keep only the first position of each type in reliability check by @powerman in [3211d59]
+- **(analyzer)** Cache method sets per pass by @powerman in [e61de45]
+
+### 📚 Documentation
+
+- **(analyzer)** Fix swapped debugPrinted comment by @powerman in [3d9dbf5]
+- **(analyzer)** Fix stale Debug field doc by @powerman in [2348f41]
+- **(analyzer)** Fix sensitivefields Doc to cover exported fields by @powerman in [581f6b2]
+- **(analyzer)** Fix FlagAnalyzer doc comment by @powerman in [a53f0d6]
+- Fix logfusc default type in package doc and README by @powerman in [87287a7]
+- Fix semantic linefeeds in main.go comments by @powerman in [bb5db7c]
+
+### 📦️ Dependencies
+
+- **(deps)** Upgrade go and golangci-lint by @powerman in [eeafde6]
+- **(deps)** Mise up by @powerman in [abcc21f]
+- **(deps)** Upgrade go and golangci-lint by @powerman in [f97c978]
+- **(deps)** Upgrade tools by @powerman in [73626a4]
+- **(deps)** Upgrade go modules by @powerman in [748aeb6]
+- **(deps)** Upgrade example powerman/sensitive to v0.7.0 by @powerman in [853071b]
+
+[0.6.0]: https://github.com/powerman/lint-sensitive/compare/v0.5.0..v0.6.0
+[eeafde6]: https://github.com/powerman/lint-sensitive/commit/eeafde676f71891d7f3c32166aef1e0eafd12592
+[a00e9c1]: https://github.com/powerman/lint-sensitive/commit/a00e9c1290c572ea4057c41c174df61684242577
+[87937a7]: https://github.com/powerman/lint-sensitive/commit/87937a7a0883c7e54e95e0a295b072666f841cdc
+[abcc21f]: https://github.com/powerman/lint-sensitive/commit/abcc21f833aebe169bb61ac0f74e499b40b66f27
+[8d59bf4]: https://github.com/powerman/lint-sensitive/commit/8d59bf421c86e083310ac0f829130d110a604c41
+[f97c978]: https://github.com/powerman/lint-sensitive/commit/f97c978622612c5a4de12885f0f11764116d9505
+[73626a4]: https://github.com/powerman/lint-sensitive/commit/73626a4ae793b304595be134b0ad23f16a78e39a
+[748aeb6]: https://github.com/powerman/lint-sensitive/commit/748aeb646de4f41462d2f40ea6afbe766a1e9b1d
+[11efcb3]: https://github.com/powerman/lint-sensitive/commit/11efcb39aa232adddeb0c95e4cfbc99dd25aa697
+[2b27f50]: https://github.com/powerman/lint-sensitive/commit/2b27f50ea507371c5378a02fd1372b4ad82d10ca
+[853071b]: https://github.com/powerman/lint-sensitive/commit/853071b1a2812d5e22bdb97ab8d3d4c6ca2ab93f
+[b7415a1]: https://github.com/powerman/lint-sensitive/commit/b7415a12c2625df07a07178c269efcc322c4d19c
+[903e6f0]: https://github.com/powerman/lint-sensitive/commit/903e6f0e90be9a2e0f1923f7138778e2192ff49c
+[93070c0]: https://github.com/powerman/lint-sensitive/commit/93070c0519eee1362602bb61ec619c1bb0880968
+[085773d]: https://github.com/powerman/lint-sensitive/commit/085773dc165d4412f7a52b51a200ff95a5927a11
+[87135d5]: https://github.com/powerman/lint-sensitive/commit/87135d500af5f99c58bd68a42672653bc01e4236
+[7a3a553]: https://github.com/powerman/lint-sensitive/commit/7a3a553496bb2d707c641f4eb8dc66cac9a2f6f4
+[ceb162f]: https://github.com/powerman/lint-sensitive/commit/ceb162fe3ca7e8f7a0466a2f758466a4720adc26
+[35dd1ca]: https://github.com/powerman/lint-sensitive/commit/35dd1ca25be2a9a36e63195c5cb214fdaf129007
+[048d3e0]: https://github.com/powerman/lint-sensitive/commit/048d3e0f53025fb753780c23ac01628964b5f8cd
+[3d9dbf5]: https://github.com/powerman/lint-sensitive/commit/3d9dbf5594546954ce306d0f0249dae0b47d23ed
+[2348f41]: https://github.com/powerman/lint-sensitive/commit/2348f413e55c2db79d9867e52b547710cae330df
+[8afc870]: https://github.com/powerman/lint-sensitive/commit/8afc8701e44d53cd29b701f21dafbac70b55a721
+[3211d59]: https://github.com/powerman/lint-sensitive/commit/3211d59ebfe9ce20d28df766cf523159f3bb2745
+[1bbcb1c]: https://github.com/powerman/lint-sensitive/commit/1bbcb1c23f5906a15380926628465c99d2930d00
+[ddaf4e3]: https://github.com/powerman/lint-sensitive/commit/ddaf4e3f27e1a765b8e45c0805d426c9f12fabe5
+[47b721c]: https://github.com/powerman/lint-sensitive/commit/47b721c6ccfebee5e8807794d883808cbef664ce
+[f62db45]: https://github.com/powerman/lint-sensitive/commit/f62db45b74532eb4bbe8bad426b6a4a1f08a3f35
+[ad72bea]: https://github.com/powerman/lint-sensitive/commit/ad72beaee8c88209527cb8036c01de2b8d988f79
+[e61de45]: https://github.com/powerman/lint-sensitive/commit/e61de45ca9063afdda5d476e8be615dcfab2c9a2
+[5fb1891]: https://github.com/powerman/lint-sensitive/commit/5fb1891867f0870f0b567461da1906d9e1a10ccd
+[321a7cd]: https://github.com/powerman/lint-sensitive/commit/321a7cdaf7ebe0ac97512b7027f6223631c5b986
+[ea8f5b1]: https://github.com/powerman/lint-sensitive/commit/ea8f5b16e6e44b803383f9e3d2d9097beb383068
+[87287a7]: https://github.com/powerman/lint-sensitive/commit/87287a79698fb32b1e6d67aa292315606b52c862
+[581f6b2]: https://github.com/powerman/lint-sensitive/commit/581f6b278acace4de98c2aa5592b80850abe3dd0
+[a53f0d6]: https://github.com/powerman/lint-sensitive/commit/a53f0d64ee7d4061123c43ac6d832e64abbd1a96
+[bb5db7c]: https://github.com/powerman/lint-sensitive/commit/bb5db7ce4b60af31b62a3b1d70047bf11995e8da
+
 ## [0.5.0] - 2026-10-16
 
 ### 🚀 Added
