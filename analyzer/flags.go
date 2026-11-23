@@ -9,9 +9,9 @@ import (
 )
 
 // FlagAnalyzer provides shared configuration for all sensitive-check analyzers.
-// It registers -sensitive.types, -sensitive.no-default-types,
-// -sensitive.skip-tests, and -sensitive.skip-generated flags,
-// consumed by both sensitivefields and sensitiveprint via Requires.
+// It registers the -sensitive.* flags
+// and passes them to sensitivefields and sensitiveprint via Requires.
+// The -sensitive.require-* and -sensitive.debug flags affect only sensitivefields.
 //
 //nolint:gochecknoglobals // Required by go/analysis framework.
 var FlagAnalyzer = &analysis.Analyzer{
