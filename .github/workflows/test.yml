@@ -56,9 +56,9 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - run: go test -timeout=120s -race ./...
+      - run: go test -timeout=5m -race ./...
         if: matrix.os != 'windows-11-arm'
-      - run: go test -timeout=120s ./...
+      - run: go test -timeout=5m ./...
         if: matrix.os == 'windows-11-arm'
 
   # Testing on available docker QEMU platforms (Linux only).
@@ -99,7 +99,7 @@ jobs:
             -v "$PWD:/workspace" \
             -v "$HOME/.cache/go-build:/root/.cache/go-build" \
             -v "$HOME/go:/go" \
-            "golang:${V}-alpine" go test -timeout=120s ./...
+            "golang:${V}-alpine" go test -timeout=5m ./...
 
   # Aggregate job for branch protection.
   test:

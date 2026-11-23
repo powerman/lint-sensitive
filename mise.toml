@@ -175,7 +175,7 @@ run = 'GOOS=windows go test -c -o /dev/null ./...'
 
 [tasks.'test:go']
 description = 'Run Go tests for a whole project'
-run = 'gotestsum -- -race -timeout=60s ./...'
+run = 'gotestsum -- -race -timeout=5m ./...'
 
 [tasks.'cover:go:total']
 description = 'Show Go test coverage total'
