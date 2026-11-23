@@ -7,6 +7,7 @@ import (
 	"fakesensitive"
 	. "fakesensitive"
 	fs "fakesensitive"
+	"fieldsdep"
 )
 
 // SomeStruct is a simple struct used as a type parameter.
@@ -243,4 +244,15 @@ type StarStringClean struct {
 type orderIndependent struct {
 	First  int
 	second fakesensitive.String // want "is reachable behind a"
+}
+
+// visitedCleanFirst tests that a type reached first via a clean path (exported field)
+// is still walked when reached later via a dirty path (unexported field).
+type visitedCleanFirst struct {
+	M fieldsdep.MidCleanFirst // want "is reachable behind a"
+}
+
+// visitedDirtyFirst is the same as visitedCleanFirst with the opposite field order.
+type visitedDirtyFirst struct {
+	M fieldsdep.MidDirtyFirst // want "is reachable behind a"
 }

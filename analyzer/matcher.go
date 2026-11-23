@@ -472,6 +472,13 @@ func isCompoundKind(t types.Type) bool {
 	}
 }
 
+// walkKey is the memoization key of walk.
+type walkKey struct {
+	t  types.Type
+	fd bool
+	bp bool
+}
+
 // walkSafeType handles the safe-type terminal in the Formatter-termination walk.
 // Returns true if the safe type would leak under the current fd/bp state.
 func (matcher) walkSafeType(cls *typeClass, fd, bp bool) bool { //nolint:revive // By design.
@@ -545,13 +552,15 @@ func (matcher) walkSafeType(cls *typeClass, fd, bp bool) bool { //nolint:revive 
 // walk is the Formatter-termination walk.
 // It returns true when a safe type reachable through t would leak its secret content
 // under the given fd/bp (format-disabled / bad-verb-possible) state.
-// visited prevents infinite recursion on cyclic types.
+// visited prevents infinite recursion on cyclic types;
+// it is keyed by the fd/bp state too, because a type is safe or leaking depending on it.
 // factorAt receives the first disable factor on the path, if any.
 //
 //nolint:funlen,gocognit // Walk matches fmt complexity; extracting would harm readability.
-func (m matcher) walk(t types.Type, fd, bp bool, visited map[types.Type]bool, factorAt *disableFactor) bool { //nolint:revive // control flags by design
+func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, factorAt *disableFactor) bool { //nolint:revive // control flags by design
 	t = types.Unalias(t)
-	if visited[t] {
+	key := walkKey{t: t, fd: fd, bp: bp}
+	if visited[key] {
 		return false
 	}
 
@@ -562,7 +571,7 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[types.Type]bool, fa
 		return m.walkSafeType(cls, fd, bp)
 	}
 
-	visited[t] = true
+	visited[key] = true
 
 	switch u := t.(type) {
 	case *types.Pointer:

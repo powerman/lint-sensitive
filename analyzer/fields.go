@@ -73,7 +73,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 			if fd {
 				factor = disableFactor{kind: "unexportedField", name: f.Name()}
 			}
-			if m.walk(f.Type(), fd, false, make(map[types.Type]bool), &factor) {
+			if m.walk(f.Type(), fd, false, make(map[walkKey]bool), &factor) {
 				msg := formatDiagnostic(f, &factor)
 				pass.Report(analysis.Diagnostic{Pos: f.Pos(), Message: msg})
 			}
