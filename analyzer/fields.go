@@ -79,6 +79,7 @@ func (m matcher) formatterStructs(pass *analysis.Pass, in *inspector.Inspector) 
 func runFields(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
+	c := newChecker(m)
 	formatterStructs := m.formatterStructs(pass, inspectResult)
 	shouldCheck := m.newShouldCheck(pass)
 
@@ -100,7 +101,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 				factor = disableFactor{kind: factorUnexportedField, name: f.Name()}
 			}
 			var path []walkStep
-			if m.walk(f.Type(), fd, make(map[walkKey]bool), &factor, &path) {
+			if c.walk(f.Type(), fd, make(map[walkKey]bool), &factor, &path) {
 				pass.Report(analysis.Diagnostic{
 					Pos:     f.Pos(),
 					Message: formatDiagnostic(f, &factor),
@@ -110,7 +111,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 		}
 	}
 
-	m.runReliabilityLevels(pass, shouldCheck)
+	c.runReliabilityLevels(pass, shouldCheck)
 
 	//nolint:nilnil // Returning nil, nil is standard for go/analysis analyzers.
 	return nil, nil

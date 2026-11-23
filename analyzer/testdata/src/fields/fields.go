@@ -372,3 +372,21 @@ type staleFactorLeaf struct {
 type StaleFactorMap struct {
 	M map[*plainTarget]staleFactorLeaf // want `sensitive field "M" is reachable through an unexported field "s"`
 }
+
+// Local types with the same name in different functions are different types,
+// so their instances of a safe type are classified separately.
+func localSafeK() {
+	type k string
+	type s struct {
+		x fakesensitive.Handle[k] // No diagnostic: *k is *<non-compound>.
+	}
+	_ = s{}
+}
+
+func localLeakK() {
+	type k struct{ v string }
+	type s struct {
+		x fakesensitive.Handle[k] // want "is reachable through"
+	}
+	_ = s{}
+}

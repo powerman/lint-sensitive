@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 type matcher struct {
@@ -24,10 +25,18 @@ type matcher struct {
 	requireFormat      bool
 	requireGoString    bool
 	requireString      bool
-
-	typeClasses map[string]*typeClass // classification cache keyed by type identity
-	typeMu      *sync.Mutex           // guards typeClasses
 }
+
+// checker is the per-pass state of the fields analyzer.
+// Its cache is keyed by type identity,
+// which is exact only within one pass, so a checker must not outlive its pass.
+type checker struct {
+	matcher
+
+	classes typeutil.Map // types.Type -> *typeClass
+}
+
+func newChecker(m matcher) *checker { return &checker{matcher: m} }
 
 // typeClass records the classification of a configured safe type.
 type typeClass struct {
@@ -82,9 +91,6 @@ func newMatcher(cfg Config) matcher {
 		requireFormat:      cfg.RequireFormat,
 		requireGoString:    cfg.RequireGoString,
 		requireString:      cfg.RequireString,
-
-		typeClasses: make(map[string]*typeClass),
-		typeMu:      &sync.Mutex{},
 	}
 	if !cfg.NoDefaultTypes {
 		for _, e := range defaultTypes {
@@ -306,51 +312,33 @@ func (matcher) isSecretExposer(t *types.Interface) bool {
 	return false
 }
 
-// typeKey returns a string key that uniquely identifies a [*types.Named]
-// across packages, allowing the classification cache to work correctly
-// when the same logical type is encountered from different importing packages
-// (each has its own [*types.Named] pointer).
-func typeKey(t *types.Named) string {
-	typeName := t.Obj().Name()
-	if t.TypeParams() != nil && t.TypeArgs() != nil {
-		typeName += "[" + typeArgsString(t.TypeArgs()) + "]"
-	}
-	return packagePath(t) + "." + typeName
-}
-
 // classify performs lazy classification of a configured safe type.
-// It caches the result in m.typeClasses.
-func (m matcher) classify(t *types.Named) *typeClass {
-	key := typeKey(t)
-
-	// Lock the entire operation: check cache, compute, store.
-	m.typeMu.Lock()
-	defer m.typeMu.Unlock()
-
-	if tc, ok := m.typeClasses[key]; ok {
+// It caches the result in c.classes.
+func (c *checker) classify(t *types.Named) *typeClass {
+	if tc, ok := c.classes.At(t).(*typeClass); ok {
 		return tc
 	}
 
 	tc := &typeClass{
-		fmtFormatter:     m.hasMethod(t, methodFormat),
-		fmtStringer:      m.hasMethod(t, methodString),
-		fmtGoStringer:    m.hasMethod(t, methodGoString),
-		jsonMarshaler:    m.hasMethod(t, methodMarshalJSON),
-		textMarshaler:    m.hasMethod(t, methodMarshalText),
-		ptrOnly:          m.ptrOnlyMethods(t),
-		structurallySafe: m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)),
+		fmtFormatter:     c.hasMethod(t, methodFormat),
+		fmtStringer:      c.hasMethod(t, methodString),
+		fmtGoStringer:    c.hasMethod(t, methodGoString),
+		jsonMarshaler:    c.hasMethod(t, methodMarshalJSON),
+		textMarshaler:    c.hasMethod(t, methodMarshalText),
+		ptrOnly:          c.ptrOnlyMethods(t),
+		structurallySafe: c.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)),
 	}
 
-	m.typeClasses[key] = tc
+	c.classes.Set(t, tc)
 
-	if m.debug {
+	if c.debug {
 		// Use base type name (without type args) for dedup —
 		// classification characteristics (Formatter, Stringer, etc.)
 		// depend on the type's method set, which is the same regardless
 		// of generic instantiation. Global dedup avoids printing the
 		// same classification when the type appears in different packages.
 		if _, loaded := debugPrinted.LoadOrStore(qualifiedName(t), struct{}{}); !loaded {
-			m.debugClassify(t, tc)
+			c.debugClassify(t, tc)
 		}
 	}
 
@@ -468,37 +456,6 @@ func (matcher) debugClassify(t *types.Named, tc *typeClass) {
 		qualifiedName(t),
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
 		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe)
-}
-
-// typeArgsString formats type arguments for the classification cache key.
-// For TypeParam arguments, the constraint string is used instead of just the name,
-// so that instantiations with different constraints get distinct cache entries
-// (structural safety depends on the constraint, not the TypeParam identity).
-func typeArgsString(targs *types.TypeList) string {
-	var b strings.Builder
-	for i := range targs.Len() {
-		if i > 0 {
-			b.WriteString(", ")
-		}
-		t := targs.At(i)
-		if tp, ok := t.(*types.TypeParam); ok {
-			b.WriteString("~{")
-			b.WriteString(tp.Constraint().String())
-			b.WriteString("}")
-		} else {
-			b.WriteString(t.String())
-		}
-	}
-	return b.String()
-}
-
-// packagePath returns the full package path of a named type,
-// or an empty string for a type without a package.
-func packagePath(t *types.Named) string {
-	if pkg := t.Obj().Pkg(); pkg != nil {
-		return pkg.Path()
-	}
-	return ""
 }
 
 // qualifiedName returns the type name prefixed with the full package path, if it has one.
@@ -622,7 +579,7 @@ func leakStep(named *types.Named) walkStep {
 // excluding the walked type itself.
 //
 //nolint:funlen,gocognit // Walk matches fmt complexity; extracting would harm readability.
-func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep) bool { //nolint:revive // control flag by design
+func (c *checker) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep) bool { //nolint:revive // control flag by design
 	t = types.Unalias(t)
 	key := walkKey{t: t, fd: fd}
 	if visited[key] {
@@ -630,11 +587,11 @@ func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt 
 	}
 
 	// Safe-type terminal.
-	if named, ok := m.sensitiveNamed(t); ok {
+	if named, ok := c.sensitiveNamed(t); ok {
 		// With fmt interfaces enabled the safe type is safe.
 		// Otherwise, if it implements any of them
 		// AND has no structural protection, its content leaks.
-		cls := m.classify(named)
+		cls := c.classify(named)
 		leaks := fd &&
 			(cls.fmtFormatter || cls.fmtStringer || cls.fmtGoStringer) && !cls.structurallySafe
 		if leaks {
@@ -648,7 +605,7 @@ func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt 
 	switch u := t.(type) {
 	case *types.Pointer:
 		// A Formatter pointer reached with fd==false is a safe terminal.
-		isFormatter := m.hasMethod(t, methodFormat)
+		isFormatter := c.hasMethod(t, methodFormat)
 		if isFormatter && !fd {
 			return false
 		}
@@ -666,7 +623,7 @@ func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt 
 		if factor.kind == "" {
 			factor = disableFactor{kind: factorNonFormatterPointer, name: u.Elem().String()}
 		}
-		if !m.walk(u.Elem(), true, visited, &factor, path) {
+		if !c.walk(u.Elem(), true, visited, &factor, path) {
 			return false
 		}
 		*factorAt = factor
@@ -688,7 +645,7 @@ func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt 
 			if !f.Exported() && factorAt.kind == "" {
 				newFactor = &disableFactor{kind: factorUnexportedField, name: f.Name()}
 			}
-			if m.walk(f.Type(), fd2, visited, newFactor, path) {
+			if c.walk(f.Type(), fd2, visited, newFactor, path) {
 				if newFactor != factorAt && factorAt.kind == "" {
 					*factorAt = *newFactor
 				}
@@ -706,14 +663,14 @@ func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt 
 		return false
 
 	case *types.Slice:
-		return m.walk(u.Elem(), fd, visited, factorAt, path)
+		return c.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Array:
-		return m.walk(u.Elem(), fd, visited, factorAt, path)
+		return c.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Map:
-		return m.walk(u.Key(), fd, visited, factorAt, path) ||
-			m.walk(u.Elem(), fd, visited, factorAt, path)
+		return c.walk(u.Key(), fd, visited, factorAt, path) ||
+			c.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Interface:
 		// Flag only SecretExposer interfaces — those that have an ExposeSecret method,
@@ -723,7 +680,7 @@ func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt 
 		// the static analyzer cannot know what concrete type will be stored in them,
 		// and flagging them causes a torrent of false positives from external library
 		// internals (e.g. prometheus.Metric or error deep inside a metrics struct).
-		if m.isSecretExposer(u) {
+		if c.isSecretExposer(u) {
 			return fd
 		}
 		return false
@@ -735,10 +692,10 @@ func (m matcher) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt 
 		// A named type with fmt.Formatter reached with fmt interfaces still enabled
 		// redacts under every verb, so it is a safe terminal (same trust as *types.Pointer).
 		// Under fd the method may not fire, so it must not be trusted there.
-		if !fd && m.hasMethod(t, methodFormat) {
+		if !fd && c.hasMethod(t, methodFormat) {
 			return false
 		}
-		if !m.walk(u.Underlying(), fd, visited, factorAt, path) {
+		if !c.walk(u.Underlying(), fd, visited, factorAt, path) {
 			return false
 		}
 		// A SecretExposer interface is a terminal which has no step of its own,

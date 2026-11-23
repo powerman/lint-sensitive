@@ -69,13 +69,13 @@ func (m matcher) collectType(
 // so a type used both there and in a regular file is reported in the regular one.
 // Only the first occurrence of each type is kept,
 // and the diagnostics are emitted in the order of these positions (deterministic).
-func (m matcher) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(token.Pos) bool) {
+func (c *checker) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(token.Pos) bool) {
 	demanded := requires{
-		marshalJSONSafe: m.requireMarshalJSON,
-		marshalTextSafe: m.requireMarshalText,
-		formatSafe:      m.requireFormat,
-		goStringSafe:    m.requireGoString,
-		stringSafe:      m.requireString,
+		marshalJSONSafe: c.requireMarshalJSON,
+		marshalTextSafe: c.requireMarshalText,
+		formatSafe:      c.requireFormat,
+		goStringSafe:    c.requireGoString,
+		stringSafe:      c.requireString,
 	}
 	if demanded == (requires{}) {
 		return
@@ -86,30 +86,30 @@ func (m matcher) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(toke
 
 	// Local type declarations.
 	for id, obj := range pass.TypesInfo.Defs {
-		m.collectType(shouldCheck, obj, id.Pos(), first)
+		c.collectType(shouldCheck, obj, id.Pos(), first)
 	}
 
 	// External type references.
 	for id, obj := range pass.TypesInfo.Uses {
-		m.collectType(shouldCheck, obj, id.Pos(), first)
+		c.collectType(shouldCheck, obj, id.Pos(), first)
 	}
 
 	for _, named := range slices.SortedFunc(maps.Keys(first), func(a, b *types.Named) int {
 		return cmp.Compare(first[a], first[b])
 	}) {
-		m.emitLevelDiagnostics(pass, first[named], named, demanded)
+		c.emitLevelDiagnostics(pass, first[named], named, demanded)
 	}
 }
 
 // emitLevelDiagnostics emits one diagnostic per unmet reliability requirement
 // for the given named type at the given position.
-func (m matcher) emitLevelDiagnostics(
+func (c *checker) emitLevelDiagnostics(
 	pass *analysis.Pass,
 	pos token.Pos,
 	named *types.Named,
 	demanded requires,
 ) {
-	cls := m.classify(named)
+	cls := c.classify(named)
 	satisfies := levelCheck(*cls)
 	typeName := qualifiedName(named)
 

@@ -556,8 +556,8 @@ func TestDebugFlag(t *testing.T) {
 	// Verify classification output appears when debug flag is enabled.
 	var bufTrue bytes.Buffer
 	log.SetOutput(&bufTrue)
-	mTrue := newMatcher(Config{Debug: true, Types: []string{"example.com/secret.Secret"}})
-	mTrue.classify(named)
+	cTrue := newChecker(newMatcher(Config{Debug: true, Types: []string{"example.com/secret.Secret"}}))
+	cTrue.classify(named)
 	log.SetOutput(os.Stderr)
 
 	output := bufTrue.String()
@@ -582,19 +582,13 @@ func TestDebugFlag(t *testing.T) {
 	// Verify no output appears when debug flag is disabled.
 	var bufFalse bytes.Buffer
 	log.SetOutput(&bufFalse)
-	mFalse := newMatcher(Config{Debug: false, Types: []string{"example.com/secret.Secret"}})
-	mFalse.classify(named)
+	cFalse := newChecker(newMatcher(Config{Debug: false, Types: []string{"example.com/secret.Secret"}}))
+	cFalse.classify(named)
 	log.SetOutput(os.Stderr)
 
 	if bufFalse.Len() > 0 {
 		t.Errorf("expected no debug output when debug=false, got:\n%s", bufFalse.String())
 	}
-
-	// typeArgsString remains uncovered because there is no public go/types API
-	// to set TypeArgs on a *types.Named programmatically (SetTypeArgs does not
-	// exist, and TypeList has no public constructor). Covering this function
-	// would require the full type-checker and a generic source file, which is
-	// impractical for a unit test.
 }
 
 // TestDebugDedup verifies that classify prints at most one debug line per
@@ -648,10 +642,10 @@ func TestDebugDedup(t *testing.T) {
 	// Collect debug output from two classify calls with different *types.Named.
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
-	m := newMatcher(Config{Debug: true, Types: []string{"example.com/testdedup.MyType"}})
+	c := newChecker(newMatcher(Config{Debug: true, Types: []string{"example.com/testdedup.MyType"}}))
 
-	tc1 := m.classify(named)
-	tc2 := m.classify(namedOther)
+	tc1 := c.classify(named)
+	tc2 := c.classify(namedOther)
 
 	log.SetOutput(os.Stderr)
 
