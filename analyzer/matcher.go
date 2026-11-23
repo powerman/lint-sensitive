@@ -196,7 +196,7 @@ func generatedFiles(pass *analysis.Pass) map[string]bool {
 	res := make(map[string]bool)
 	for _, file := range pass.Files {
 		if ast.IsGenerated(file) {
-			res[pass.Fset.Position(file.Pos()).Filename] = true
+			res[pass.Fset.File(file.Pos()).Name()] = true
 		}
 	}
 	return res
