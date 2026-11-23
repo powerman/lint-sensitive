@@ -45,10 +45,13 @@ type typeClass struct {
 	ptrOnly map[string]bool
 }
 
-// require plumbing shared state across every per-package matcher in the
-// flag-driven path, which the go/analysis framework does not support.
+// debugPrinted dedups debug output across packages,
+// so a type seen in several packages is classified in the output only once.
+// The alternative would require plumbing shared state
+// across every per-package matcher in the flag-driven path,
+// which the go/analysis framework does not support.
 //
-//nolint:gochecknoglobals // Debug-only global dedup — the alternative would
+//nolint:gochecknoglobals // Debug-only global dedup.
 var debugPrinted sync.Map
 
 // disableFactor records the first factor on the path
