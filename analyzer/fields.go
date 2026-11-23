@@ -16,7 +16,7 @@ import (
 func newFieldsAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name:     "sensitivefields",
-		Doc:      "detect unexported struct fields whose type contains sensitive values",
+		Doc:      "detect struct fields through which fmt can print the content of a sensitive value",
 		Requires: requires,
 		Run: func(pass *analysis.Pass) (any, error) {
 			return runFields(pass, get(pass))
