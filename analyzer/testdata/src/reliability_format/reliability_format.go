@@ -28,5 +28,5 @@ type CheckDecoy struct {
 }
 
 type CheckPtrRecv struct {
-	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee format-level safety"
+	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee format-level safety.*declared only on a pointer receiver.*: Format\\)"
 }

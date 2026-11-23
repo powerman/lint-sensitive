@@ -35,5 +35,5 @@ type CheckDecoy struct {
 }
 
 type CheckPtrRecv struct {
-	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee JSON marshal safety"
+	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee JSON marshal safety.*declared only on a pointer receiver.*: MarshalJSON, MarshalText\\)"
 }

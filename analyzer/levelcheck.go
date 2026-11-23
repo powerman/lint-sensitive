@@ -5,6 +5,7 @@ import (
 	"go/token"
 	"go/types"
 	"slices"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -125,41 +126,66 @@ func (m matcher) emitLevelDiagnostics(
 	for _, d := range [...]struct {
 		demand, satisfy bool
 		msg             string
+		methods         []string // methods which would satisfy the surface
 	}{
 		{
 			demanded.marshalJSONSafe, satisfies.marshalJSONSafe,
 			"JSON marshal safety: " +
 				"the type neither implements encoding.TextMarshaler nor json.Marshaler",
+			[]string{methodMarshalJSON, methodMarshalText},
 		},
 		{
 			demanded.marshalTextSafe, satisfies.marshalTextSafe,
 			"text marshal safety: " +
 				"the type does not implement encoding.TextMarshaler",
+			[]string{methodMarshalText},
 		},
 		{
 			demanded.formatSafe, satisfies.formatSafe,
 			"format-level safety: " +
 				"the type does not implement fmt.Formatter " +
 				"and is not structurally protected",
+			[]string{methodFormat},
 		},
 		{
 			demanded.goStringSafe, satisfies.goStringSafe,
 			"GoString-level safety: " +
 				"the type does not implement fmt.GoStringer or fmt.Formatter, " +
 				"and is not structurally protected",
+			[]string{methodFormat, methodGoString},
 		},
 		{
 			demanded.stringSafe, satisfies.stringSafe,
 			"String-level safety: " +
 				"the type does not implement fmt.Stringer or fmt.Formatter, " +
 				"and is not structurally protected",
+			[]string{methodFormat, methodString},
 		},
 	} {
 		if d.demand && !d.satisfy {
 			pass.Report(analysis.Diagnostic{
-				Pos:     pos,
-				Message: "configured safe type " + typeName + " does not guarantee " + d.msg,
+				Pos: pos,
+				Message: "configured safe type " + typeName + " does not guarantee " + d.msg +
+					ptrOnlyHint(cls.ptrOnly, d.methods),
 			})
 		}
 	}
+}
+
+// ptrOnlyHint explains why a type with a suitable method on a pointer receiver
+// is still reported:
+// fmt and encoding/json do not call such a method for a non-addressable value.
+// It returns an empty string when none of the methods is pointer-receiver-only.
+func ptrOnlyHint(ptrOnly map[string]bool, methods []string) string {
+	var found []string
+	for _, name := range methods {
+		if ptrOnly[name] {
+			found = append(found, name)
+		}
+	}
+	if len(found) == 0 {
+		return ""
+	}
+	return " (declared only on a pointer receiver, so not called for a T value: " +
+		strings.Join(found, ", ") + ")"
 }

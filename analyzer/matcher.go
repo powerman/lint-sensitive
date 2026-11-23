@@ -31,13 +31,17 @@ type matcher struct {
 
 // typeClass records the classification of a configured safe type.
 type typeClass struct {
-	fmtFormatter     bool // t or *t implements fmt.Formatter
-	fmtStringer      bool // t or *t implements fmt.Stringer
-	fmtGoStringer    bool // t or *t implements fmt.GoStringer
-	jsonMarshaler    bool // t or *t implements json.Marshaler
-	textMarshaler    bool // t or *t implements encoding.TextMarshaler
+	fmtFormatter     bool // t implements fmt.Formatter
+	fmtStringer      bool // t implements fmt.Stringer
+	fmtGoStringer    bool // t implements fmt.GoStringer
+	jsonMarshaler    bool // t implements json.Marshaler
+	textMarshaler    bool // t implements encoding.TextMarshaler
 	structurallySafe bool
 	anyFmtInterface  bool // = fmtFormatter || fmtStringer || fmtGoStringer
+
+	// ptrOnly holds names of the methods above which only *t has,
+	// so they are not called on a t value and do not count as implemented.
+	ptrOnly map[string]bool
 }
 
 // require plumbing shared state across every per-package matcher in the
@@ -184,17 +188,26 @@ func inGeneratedFile(pass *analysis.Pass, pos token.Pos) bool {
 	return false
 }
 
+// Names of the fmt/encoding interface methods the analyzer relies on.
+const (
+	methodFormat      = "Format"
+	methodString      = "String"
+	methodGoString    = "GoString"
+	methodMarshalJSON = "MarshalJSON"
+	methodMarshalText = "MarshalText"
+)
+
 // methodShape returns a predicate for the signature of the fmt/encoding interface method
 // with the given name.
 // The check is structural (no stdlib interface resolution),
 // so a same-named method with another signature is not mistaken for the interface method.
 func methodShape(name string) func(*types.Signature) bool {
 	switch name {
-	case "Format":
+	case methodFormat:
 		return isFormatSig
-	case "String", "GoString":
+	case methodString, methodGoString:
 		return isNoArgsResult(types.Typ[types.String])
-	case "MarshalJSON", "MarshalText":
+	case methodMarshalJSON, methodMarshalText:
 		return isMarshalSig
 	default:
 		panic("hasMethod: unsupported method name " + name)
@@ -251,6 +264,19 @@ func (matcher) hasMethod(t types.Type, name string) bool {
 	return false
 }
 
+// ptrOnlyMethods returns the names of the fmt/encoding interface methods
+// which are in the method set of *t but not of t.
+func (m matcher) ptrOnlyMethods(t types.Type) map[string]bool {
+	ptr := types.NewPointer(t)
+	res := make(map[string]bool)
+	for _, name := range [...]string{methodFormat, methodString, methodGoString, methodMarshalJSON, methodMarshalText} {
+		if !m.hasMethod(t, name) && m.hasMethod(ptr, name) {
+			res[name] = true
+		}
+	}
+	return res
+}
+
 // isSecretExposer reports whether t is a SecretExposer interface —
 // an interface that declares an ExposeSecret method.
 // This is the convention used by github.com/powerman/sensitive.Secret[T]
@@ -291,11 +317,12 @@ func (m matcher) classify(t *types.Named) *typeClass {
 	}
 
 	tc := &typeClass{}
-	tc.fmtFormatter = m.hasMethod(t, "Format")
-	tc.fmtStringer = m.hasMethod(t, "String")
-	tc.fmtGoStringer = m.hasMethod(t, "GoString")
-	tc.jsonMarshaler = m.hasMethod(t, "MarshalJSON")
-	tc.textMarshaler = m.hasMethod(t, "MarshalText")
+	tc.fmtFormatter = m.hasMethod(t, methodFormat)
+	tc.fmtStringer = m.hasMethod(t, methodString)
+	tc.fmtGoStringer = m.hasMethod(t, methodGoString)
+	tc.jsonMarshaler = m.hasMethod(t, methodMarshalJSON)
+	tc.textMarshaler = m.hasMethod(t, methodMarshalText)
+	tc.ptrOnly = m.ptrOnlyMethods(t)
 	tc.anyFmtInterface = tc.fmtFormatter || tc.fmtStringer || tc.fmtGoStringer
 	tc.structurallySafe = m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool))
 
@@ -603,7 +630,7 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 	switch u := t.(type) {
 	case *types.Pointer:
 		// A Formatter pointer reached with fd==false AND bp==false is a safe terminal.
-		if m.hasMethod(t, "Format") && !fd && !bp {
+		if m.hasMethod(t, methodFormat) && !fd && !bp {
 			return false
 		}
 		// Under badVerb (bp=true) at depth 0, fmt only dereferences the
