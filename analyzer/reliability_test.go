@@ -3,8 +3,6 @@ package analyzer_test
 import (
 	"testing"
 
-	"golang.org/x/tools/go/analysis/analysistest"
-
 	"github.com/powerman/lint-sensitive/analyzer"
 )
 
@@ -18,17 +16,7 @@ var reliabilityTypes = []string{"fakesensitive", "fakesecrecy.Secret", "fakelogf
 func TestRequireMarshalJSON(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types:              reliabilityTypes,
-		RequireMarshalJSON: true,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			analysistest.Run(t, analysistest.TestData(), a, "reliability_marshal_json")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	runNew(t, analyzer.Config{Types: reliabilityTypes, RequireMarshalJSON: true}, "sensitivefields", "reliability_marshal_json")
 }
 
 // TestRequireMarshalText verifies that -require-marshal-text emits diagnostics
@@ -36,17 +24,7 @@ func TestRequireMarshalJSON(t *testing.T) {
 func TestRequireMarshalText(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types:              reliabilityTypes,
-		RequireMarshalText: true,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			analysistest.Run(t, analysistest.TestData(), a, "reliability_marshal_text")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	runNew(t, analyzer.Config{Types: reliabilityTypes, RequireMarshalText: true}, "sensitivefields", "reliability_marshal_text")
 }
 
 // TestRequireFormat verifies that -require-format emits diagnostics
@@ -54,17 +32,7 @@ func TestRequireMarshalText(t *testing.T) {
 func TestRequireFormat(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types:         reliabilityTypes,
-		RequireFormat: true,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			analysistest.Run(t, analysistest.TestData(), a, "reliability_format")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	runNew(t, analyzer.Config{Types: reliabilityTypes, RequireFormat: true}, "sensitivefields", "reliability_format")
 }
 
 // TestRequireGoString verifies that -require-gostring emits
@@ -73,17 +41,7 @@ func TestRequireFormat(t *testing.T) {
 func TestRequireGoString(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types:           reliabilityTypes,
-		RequireGoString: true,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			analysistest.Run(t, analysistest.TestData(), a, "reliability_gostring")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	runNew(t, analyzer.Config{Types: reliabilityTypes, RequireGoString: true}, "sensitivefields", "reliability_gostring")
 }
 
 // TestRequireString verifies that -require-string emits
@@ -92,17 +50,7 @@ func TestRequireGoString(t *testing.T) {
 func TestRequireString(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types:         reliabilityTypes,
-		RequireString: true,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			analysistest.Run(t, analysistest.TestData(), a, "reliability_string")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	runNew(t, analyzer.Config{Types: reliabilityTypes, RequireString: true}, "sensitivefields", "reliability_string")
 }
 
 // TestNoReliabilityFlags verifies that without any reliability flags,
@@ -110,14 +58,5 @@ func TestRequireString(t *testing.T) {
 func TestNoReliabilityFlags(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types: reliabilityTypes,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			analysistest.Run(t, analysistest.TestData(), a, "reliability_none")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	runNew(t, analyzer.Config{Types: reliabilityTypes}, "sensitivefields", "reliability_none")
 }

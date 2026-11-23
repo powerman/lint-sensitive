@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/analysistest"
 
 	"github.com/powerman/lint-sensitive/analyzer"
@@ -32,30 +33,26 @@ func TestPrintAnalyzer(t *testing.T) {
 	analysistest.Run(t, analysistest.TestData(), analyzer.PrintAnalyzer, "printcheck")
 }
 
+// runNew runs the analyzer with the given name from analyzer.New(cfg) on the testdata package pkg.
+func runNew(t *testing.T, cfg analyzer.Config, name, pkg string) {
+	t.Helper()
+
+	analyzers := analyzer.New(cfg)
+	i := slices.IndexFunc(analyzers, func(a *analysis.Analyzer) bool { return a.Name == name })
+	if i < 0 {
+		t.Fatalf("%s not found in New() result", name)
+	}
+	analysistest.Run(t, analysistest.TestData(), analyzers[i], pkg)
+}
+
 func TestNewFieldsAnalyzer(t *testing.T) {
 	t.Parallel()
-
-	analyzers := analyzer.New(analyzer.Config{Types: strings.Split(testTypes, ",")})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			analysistest.Run(t, analysistest.TestData(), a, "fields")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ",")}, "sensitivefields", "fields")
 }
 
 func TestNewPrintAnalyzer(t *testing.T) {
 	t.Parallel()
-
-	analyzers := analyzer.New(analyzer.Config{Types: strings.Split(testTypes, ",")})
-	for _, a := range analyzers {
-		if a.Name == "sensitiveprint" {
-			analysistest.Run(t, analysistest.TestData(), a, "printcheck")
-			return
-		}
-	}
-	t.Fatal("sensitiveprint not found in New() result")
+	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ",")}, "sensitiveprint", "printcheck")
 }
 
 // TestFieldsRelatedInformation verifies the hops attached to a diagnostic:

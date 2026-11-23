@@ -4,8 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/tools/go/analysis/analysistest"
-
 	"github.com/powerman/lint-sensitive/analyzer"
 )
 
@@ -18,19 +16,10 @@ import (
 func TestSkipTests(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types:     strings.Split(testTypes, ","),
-		SkipTests: true,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			// skiptests package has a regular file (pkg.go) that should be flagged,
-			// and a _test.go file (pkg_test.go) whose diagnostic is suppressed.
-			analysistest.Run(t, analysistest.TestData(), a, "skiptests")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	// skiptests package has a regular file (pkg.go) that should be flagged,
+	// and a _test.go file (pkg_test.go) whose diagnostic is suppressed.
+	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ","), SkipTests: true},
+		"sensitivefields", "skiptests")
 }
 
 // TestSkipGenerated verifies that with SkipGenerated: true, diagnostics from
@@ -39,19 +28,10 @@ func TestSkipTests(t *testing.T) {
 func TestSkipGenerated(t *testing.T) {
 	t.Parallel()
 
-	analyzers := analyzer.New(analyzer.Config{
-		Types:         strings.Split(testTypes, ","),
-		SkipGenerated: true,
-	})
-	for _, a := range analyzers {
-		if a.Name == "sensitivefields" {
-			// skipgen package has a regular file (pkg.go) that should be flagged,
-			// and a generated file (pkg_generated.go) whose diagnostic is suppressed.
-			analysistest.Run(t, analysistest.TestData(), a, "skipgen")
-			return
-		}
-	}
-	t.Fatal("sensitivefields not found in New() result")
+	// skipgen package has a regular file (pkg.go) that should be flagged,
+	// and a generated file (pkg_generated.go) whose diagnostic is suppressed.
+	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ","), SkipGenerated: true},
+		"sensitivefields", "skipgen")
 }
 
 // TestSkipReliability verifies that skip-tests and skip-generated
@@ -75,13 +55,7 @@ func TestSkipReliability(t *testing.T) {
 
 			tc.cfg.Types = reliabilityTypes
 			tc.cfg.RequireMarshalJSON = true
-			for _, a := range analyzer.New(tc.cfg) {
-				if a.Name == "sensitivefields" {
-					analysistest.Run(t, analysistest.TestData(), a, tc.pkg)
-					return
-				}
-			}
-			t.Fatal("sensitivefields not found in New() result")
+			runNew(t, tc.cfg, "sensitivefields", tc.pkg)
 		})
 	}
 }

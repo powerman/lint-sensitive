@@ -177,35 +177,15 @@ func TestAddEntryPackageTypeSyntax(t *testing.T) {
 func TestInTestFile(t *testing.T) {
 	t.Parallel()
 	fset := token.NewFileSet()
-	_ = fset.AddFile("/path/to/foo.go", -1, 100)
-	_ = fset.AddFile("/path/to/foo_test.go", -1, 100)
-
-	// Find the test file by iterating through the fileset.
-	var testFilePos token.Pos
-	fset.Iterate(func(f *token.File) bool {
-		if f.Name() == "/path/to/foo_test.go" {
-			testFilePos = f.Pos(0)
-			return false
-		}
-		return true
-	})
-
-	// Find the non-test file.
-	var plainFilePos token.Pos
-	fset.Iterate(func(f *token.File) bool {
-		if f.Name() == "/path/to/foo.go" {
-			plainFilePos = f.Pos(0)
-			return false
-		}
-		return true
-	})
+	plain := fset.AddFile("/path/to/foo.go", -1, 100)
+	testFile := fset.AddFile("/path/to/foo_test.go", -1, 100)
 
 	pass := &analysis.Pass{Fset: fset}
 
-	if inTestFile(pass, plainFilePos) {
+	if inTestFile(pass, plain.Pos(0)) {
 		t.Error("foo.go should not be reported as a test file")
 	}
-	if !inTestFile(pass, testFilePos) {
+	if !inTestFile(pass, testFile.Pos(0)) {
 		t.Error("foo_test.go should be reported as a test file")
 	}
 
