@@ -4,11 +4,11 @@ import (
 	"cmp"
 	"go/token"
 	"go/types"
-	"maps"
 	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 // requires captures which surfaces a typeClass satisfies
@@ -34,28 +34,26 @@ func levelCheck(c typeClass) requires {
 }
 
 // collectType records pos in first
-// if obj, taken from Defs/Uses, is a configured safe type,
+// if t is a configured safe type (after resolving aliases),
 // pos is not skipped by skip-tests or skip-generated,
 // and it precedes the position recorded earlier for this type.
+// The map is keyed by type identity because instances of one generic type
+// created in different packages are different pointers.
 func (m matcher) collectType(
 	shouldCheck func(token.Pos) bool,
-	obj types.Object,
+	t types.Type,
 	pos token.Pos,
-	first map[*types.Named]token.Pos,
+	first *typeutil.Map,
 ) {
-	tn, ok := obj.(*types.TypeName)
-	if !ok {
-		return
-	}
-	named, ok := tn.Type().(*types.Named)
+	named, ok := types.Unalias(t).(*types.Named)
 	if !ok || !m.isSensitiveNamed(named) {
 		return
 	}
-	if prev, seen := first[named]; seen && prev <= pos {
+	if prev, seen := first.At(named).(token.Pos); seen && prev <= pos {
 		return
 	}
 	if shouldCheck(pos) {
-		first[named] = pos
+		first.Set(named, pos)
 	}
 }
 
@@ -65,10 +63,13 @@ func (m matcher) collectType(
 // It reports at the type usage site within the analyzed package.
 // (Declaration-site reporting is not practical because the declaration of most
 // configured safe types — the built-in defaults — lives in an external package.)
+// A generic type is checked as the instance the code uses, e.g. SinglePtr[string],
+// and an alias is resolved to the type it stands for.
 // References in files skipped by skip-tests or skip-generated are ignored,
 // so a type used both there and in a regular file is reported in the regular one.
 // Only the first occurrence of each type is kept,
 // and the diagnostics are emitted in the order of these positions (deterministic).
+// Instances of one generic type which fail for the same reason are reported once.
 func (c *checker) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(token.Pos) bool) {
 	demanded := requires{
 		marshalJSONSafe: c.requireMarshalJSON,
@@ -82,32 +83,61 @@ func (c *checker) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(tok
 	}
 
 	// The first position of each configured safe type.
-	first := make(map[*types.Named]token.Pos)
+	var first typeutil.Map
 
 	// Local type declarations.
+	// A generic type is collected as its origin: there it is the type for any type argument.
 	for id, obj := range pass.TypesInfo.Defs {
-		c.collectType(shouldCheck, obj, id.Pos(), first)
+		if tn, ok := obj.(*types.TypeName); ok {
+			c.collectType(shouldCheck, tn.Type(), id.Pos(), &first)
+		}
 	}
 
 	// External type references.
 	for id, obj := range pass.TypesInfo.Uses {
-		c.collectType(shouldCheck, obj, id.Pos(), first)
+		tn, ok := obj.(*types.TypeName)
+		// The instance of a generic type or alias is collected from Instances below:
+		// its object has unbound type parameters.
+		if _, inst := pass.TypesInfo.Instances[id]; !ok || inst {
+			continue
+		}
+		c.collectType(shouldCheck, tn.Type(), id.Pos(), &first)
 	}
 
-	for _, named := range slices.SortedFunc(maps.Keys(first), func(a, b *types.Named) int {
-		return cmp.Compare(first[a], first[b])
-	}) {
-		c.emitLevelDiagnostics(pass, first[named], named, demanded)
+	// Instances of generic types.
+	// Instances of generic functions are not Named and are skipped.
+	for id, inst := range pass.TypesInfo.Instances {
+		c.collectType(shouldCheck, inst.Type, id.Pos(), &first)
+	}
+
+	keys := first.Keys()
+	slices.SortFunc(keys, func(a, b types.Type) int {
+		return cmp.Compare(first.At(a).(token.Pos), first.At(b).(token.Pos))
+	})
+	reported := make(map[levelReport]bool)
+	for _, t := range keys {
+		c.emitLevelDiagnostics(pass, first.At(t).(token.Pos), t.(*types.Named), demanded, reported)
 	}
 }
 
+// levelReport identifies a diagnostic emitted by emitLevelDiagnostics.
+// The message names a generic type without type arguments,
+// so the diagnostics of its instances which fail for the same reason are indistinguishable.
+// One of them is enough: once it is fixed, the next run reports the next one.
+type levelReport struct {
+	origin *types.TypeName
+	msg    string
+}
+
 // emitLevelDiagnostics emits one diagnostic per unmet reliability requirement
-// for the given named type at the given position.
+// for the given named type at the given position,
+// unless the same diagnostic is already in reported.
 func (c *checker) emitLevelDiagnostics(
 	pass *analysis.Pass,
 	pos token.Pos,
 	named *types.Named,
 	demanded requires,
+	reported map[levelReport]bool,
 ) {
 	cls := c.classify(named)
 	satisfies := levelCheck(*cls)
@@ -152,13 +182,17 @@ func (c *checker) emitLevelDiagnostics(
 			[]string{methodFormat, methodString},
 		},
 	} {
-		if d.demand && !d.satisfy {
-			pass.Report(analysis.Diagnostic{
-				Pos: pos,
-				Message: "configured safe type " + typeName + " does not guarantee " + d.msg +
-					ptrOnlyHint(cls.ptrOnly, d.methods),
-			})
+		if !d.demand || d.satisfy {
+			continue
 		}
+		msg := "configured safe type " + typeName + " does not guarantee " + d.msg +
+			ptrOnlyHint(cls.ptrOnly, d.methods)
+		key := levelReport{origin: named.Origin().Obj(), msg: msg}
+		if reported[key] {
+			continue
+		}
+		reported[key] = true
+		pass.Report(analysis.Diagnostic{Pos: pos, Message: msg})
 	}
 }
 

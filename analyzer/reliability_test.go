@@ -1,6 +1,7 @@
 package analyzer_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/powerman/lint-sensitive/analyzer"
@@ -59,4 +60,21 @@ func TestNoReliabilityFlags(t *testing.T) {
 	t.Parallel()
 
 	runNew(t, analyzer.Config{Types: reliabilityTypes}, "sensitivefields", "reliability_none")
+}
+
+// TestRequireFormatAlias verifies that -require-format sees a safe type
+// referenced only through an alias declared in another package.
+func TestRequireFormatAlias(t *testing.T) {
+	t.Parallel()
+
+	runNew(t, analyzer.Config{Types: reliabilityTypes, RequireFormat: true}, "sensitivefields", "reliability_alias")
+}
+
+// TestRequireFormatGeneric verifies that instances of one generic safe type
+// which fail for the same reason are reported once.
+func TestRequireFormatGeneric(t *testing.T) {
+	t.Parallel()
+
+	types := append(slices.Clone(reliabilityTypes), "reliability_generic.Wrap")
+	runNew(t, analyzer.Config{Types: types, RequireFormat: true}, "sensitivefields", "reliability_generic")
 }

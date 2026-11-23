@@ -21,6 +21,16 @@ type CheckRef struct {
 	X fakesensitive.Ref[string]
 }
 
+// Type that PASSES format-level safety: the instance has *string, a *<non-compound>.
+type CheckSinglePtrString struct {
+	X fakesensitive.SinglePtr[string]
+}
+
+// Type that fails format-level safety: the instance has *struct{ a int }, a *<compound>.
+type CheckSinglePtrStruct struct {
+	X fakesensitive.SinglePtr[struct{ a int }] // want "configured safe type fakesensitive.SinglePtr does not guarantee format-level safety"
+}
+
 // Wrong-signature decoys and pointer-receiver-only methods do not count.
 
 type CheckDecoy struct {
