@@ -682,7 +682,11 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		if !m.walk(u.Elem(), true, true, visited, factorAt, path) {
 			return false
 		}
-		step := walkStep{desc: "non-Formatter pointer to " + shortTypeString(u.Elem())}
+		// A Formatter pointer gets here only under fd/bp, so it is not called "non-Formatter".
+		step := walkStep{desc: "pointer to " + shortTypeString(u.Elem())}
+		if !m.hasMethod(t, methodFormat) {
+			step.desc = "non-Formatter " + step.desc
+		}
 		if named, ok := types.Unalias(u.Elem()).(*types.Named); ok {
 			step.pos = named.Obj().Pos()
 		}

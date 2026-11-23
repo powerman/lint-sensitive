@@ -78,6 +78,12 @@ func TestFieldsRelatedInformation(t *testing.T) {
 			`unexported field "secret" of type fakesensitive.String`,
 			"safe type fakesensitive.String",
 		},
+		// A Formatter pointer which does not fire is not called "non-Formatter".
+		"UnexportedPtrFmtWrapper.p": {
+			"pointer to fields.ptrFmtWrapper",
+			`unexported field "secret" of type fakesensitive.String`,
+			"safe type fakesensitive.String",
+		},
 		"exposerField.e": {"safe type fields.exposer"},
 	}
 

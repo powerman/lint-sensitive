@@ -312,6 +312,11 @@ type PtrFmtWrapperFlagged struct {
 	W ptrFmtWrapper // want "is reachable through"
 }
 
+// UnexportedPtrFmtWrapper — under an unexported field Format of a pointer does not fire either.
+type UnexportedPtrFmtWrapper struct {
+	p *ptrFmtWrapper // want "is reachable through"
+}
+
 // UnexportedFmtWrapper — under an unexported field Format does not fire.
 type UnexportedFmtWrapper struct {
 	w fmtWrapper // want "is reachable through"
