@@ -371,6 +371,17 @@ func TestIsQualifier(t *testing.T) {
 		nil,
 	)
 
+	namedString := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Nstr", nil),
+		types.Typ[types.String],
+		nil,
+	)
+	namedInt := types.NewNamed(
+		types.NewTypeName(token.NoPos, pkg, "Nint", nil),
+		types.Typ[types.Int],
+		nil,
+	)
+
 	// Empty interface type for *interface{} test.
 	emptyIface := types.NewInterfaceType(nil, nil)
 	emptyIface.Complete()
@@ -396,6 +407,8 @@ func TestIsQualifier(t *testing.T) {
 		{name: "*Nf (underlying func())", typ: types.NewPointer(namedFunc), want: true, plan: "*Pointer→*Named→*Signature"},
 		{name: "*Nc (underlying chan int)", typ: types.NewPointer(namedChan), want: true, plan: "*Pointer→*Named→*Chan"},
 		{name: "*Nup (underlying unsafe.Pointer)", typ: types.NewPointer(namedUnsafePtr), want: true, plan: "*Pointer→*Named→*UnsafePointer"},
+		{name: "*Nstr (underlying string)", typ: types.NewPointer(namedString), want: true, plan: "*Pointer→*Named→*Basic (non-compound prints as address)"},
+		{name: "*Nint (underlying int)", typ: types.NewPointer(namedInt), want: true, plan: "*Pointer→*Named→*Basic (non-compound prints as address)"},
 		// Non-qualifiers
 		{name: "*[]byte (compound)", typ: types.NewPointer(types.NewSlice(types.Typ[types.Uint8])), want: false, plan: "*Pointer→*<compound> — *[]byte is NOT a qualifier"},
 		{name: "*struct{} (compound)", typ: types.NewPointer(types.NewStruct(nil, nil)), want: false, plan: "*Pointer→*<compound>"},

@@ -303,21 +303,10 @@ func (matcher) isQualifier(t types.Type) bool {
 		case *types.TypeParam: // *TypeParam: safe iff constraint excludes compound kinds
 			return !typeParamHasCompoundConstraint(e)
 		case *types.Named:
-			// Check if the named type's underlying is a qualifier kind.
-			switch ue := e.Underlying().(type) {
-			case *types.Pointer:
-				return true
-			case *types.Interface:
-				return true
-			case *types.Signature:
-				return true
-			case *types.Chan:
-				return true
-			case *types.Basic:
-				return ue.Kind() == types.UnsafePointer
-			default:
-				return false
-			}
+			// fmt dereferences a depth-0 pointer only for compound kinds,
+			// so a pointer to any non-compound named type (e.g. *MyString)
+			// prints as an address.
+			return !isCompoundKind(e)
 		default:
 			return false // *<compound> — pointee is a compound type
 		}

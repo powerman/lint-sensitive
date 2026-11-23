@@ -71,3 +71,20 @@ type SomeCompound struct{ s string }
 type Secret[T any] interface {
 	ExposeSecret() T
 }
+
+// Label is a named non-compound type used as a pointee.
+type Label string
+
+// PtrToLabel holds a pointer to a named non-compound type.
+// fmt prints it as an address, so it is structurally safe.
+// It does NOT implement any fmt interface.
+type PtrToLabel struct {
+	p *Label
+}
+
+// PtrToCompound holds a pointer to a named struct.
+// fmt dereferences it, so it is NOT structurally safe.
+// It does NOT implement any fmt interface.
+type PtrToCompound struct {
+	p *SomeCompound
+}
