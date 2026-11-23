@@ -59,11 +59,11 @@ func relatedInformation(fset *token.FileSet, path []walkStep) []analysis.Related
 // Their fields are not checked:
 // such a type is a safe terminal wherever fmt can reach it with interfaces enabled,
 // and the cases where it cannot are reported at the field which holds the type.
-func (m matcher) formatterStructs(pass *analysis.Pass, in *inspector.Inspector) map[*ast.StructType]bool {
+func (c *checker) formatterStructs(pass *analysis.Pass, in *inspector.Inspector) map[*ast.StructType]bool {
 	res := make(map[*ast.StructType]bool)
 	for ts := range inspector.All[*ast.TypeSpec](in) {
 		obj := pass.TypesInfo.Defs[ts.Name]
-		if obj == nil || !m.hasMethod(obj.Type(), methodFormat) {
+		if obj == nil || !c.hasMethod(obj.Type(), methodFormat) {
 			continue
 		}
 		for n := range ast.Preorder(ts.Type) {
@@ -80,7 +80,7 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
 	c := newChecker(m)
-	formatterStructs := m.formatterStructs(pass, inspectResult)
+	formatterStructs := c.formatterStructs(pass, inspectResult)
 	shouldCheck := m.newShouldCheck(pass)
 
 	for st := range inspector.All[*ast.StructType](inspectResult) {

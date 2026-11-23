@@ -34,6 +34,7 @@ type checker struct {
 	matcher
 
 	classes typeutil.Map // types.Type -> *typeClass
+	msets   typeutil.MethodSetCache
 }
 
 func newChecker(m matcher) *checker { return &checker{matcher: m} }
@@ -271,9 +272,9 @@ func isMarshalSig(sig *types.Signature) bool {
 // methods declared on *t are not counted:
 // fmt and encoding/json never call them on a non-addressable value.
 // Promoted value-receiver methods are part of the method set of both t and *t.
-func (matcher) hasMethod(t types.Type, name string) bool {
+func (c *checker) hasMethod(t types.Type, name string) bool {
 	hasShape := methodShape(name)
-	for method := range types.NewMethodSet(t).Methods() {
+	for method := range c.msets.MethodSet(t).Methods() {
 		if method.Obj().Name() != name {
 			continue
 		}
@@ -287,11 +288,11 @@ func (matcher) hasMethod(t types.Type, name string) bool {
 
 // ptrOnlyMethods returns the names of the fmt/encoding interface methods
 // which are in the method set of *t but not of t.
-func (m matcher) ptrOnlyMethods(t types.Type) map[string]bool {
+func (c *checker) ptrOnlyMethods(t types.Type) map[string]bool {
 	ptr := types.NewPointer(t)
 	res := make(map[string]bool)
 	for _, name := range [...]string{methodFormat, methodString, methodGoString, methodMarshalJSON, methodMarshalText} {
-		if !m.hasMethod(t, name) && m.hasMethod(ptr, name) {
+		if !c.hasMethod(t, name) && c.hasMethod(ptr, name) {
 			res[name] = true
 		}
 	}

@@ -769,7 +769,7 @@ type PromotedFromPtrEmbed struct{ PtrRecv }
 		{"PromotedFromPtrEmbed", true, true},
 	}
 
-	m := newMatcher(Config{NoDefaultTypes: true})
+	c := newChecker(newMatcher(Config{NoDefaultTypes: true}))
 	for _, tt := range tests {
 		typ := pkg.Scope().Lookup(tt.typ).Type()
 		if tt.ptr {
@@ -778,7 +778,7 @@ type PromotedFromPtrEmbed struct{ PtrRecv }
 		for _, name := range methods {
 			t.Run(typ.String()+"/"+name, func(t *testing.T) {
 				t.Parallel()
-				if got := m.hasMethod(typ, name); got != tt.want {
+				if got := c.hasMethod(typ, name); got != tt.want {
 					t.Errorf("hasMethod(%v, %q) = %v, want %v", typ, name, got, tt.want)
 				}
 			})
