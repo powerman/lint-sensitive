@@ -112,11 +112,11 @@ The linter flags every field on such a path, naming the factor that disables
 redaction so the fix is obvious:
 
 ```text
-server.go:2:  sensitive field "cfg" is reachable behind a unexported field "cfg";
+server.go:2:  sensitive field "cfg" is reachable through an unexported field "cfg";
               the safe type's fmt.Formatter/Stringer/GoStringer then does not fire
               and the field is not structurally protected
               — fmt can print its secret content
-session.go:2: sensitive field "Creds" is reachable behind a non-Formatter pointer
+session.go:2: sensitive field "Creds" is reachable through a non-Formatter pointer
               to main.Credentials; the safe type's fmt.Formatter/Stringer/GoStringer
               then does not fire and the field is not structurally protected
               — fmt can print its secret content

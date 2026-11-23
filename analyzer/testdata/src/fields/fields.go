@@ -18,7 +18,7 @@ type SomeStruct struct {
 
 // inner is a struct containing a sensitive field, without fmt interfaces.
 type inner struct {
-	secret fakesensitive.String // want "is reachable behind a"
+	secret fakesensitive.String // want "is reachable through"
 }
 
 // exportedOK tests that exported fields of a sensitive type are NOT flagged.
@@ -28,35 +28,35 @@ type exportedOK struct {
 
 type directFakeSensitive struct {
 	// An unexported field of a sensitive type should be flagged.
-	x fakesensitive.String // want "is reachable behind a"
+	x fakesensitive.String // want "is reachable through"
 }
 
 type directFakePlayground struct {
-	x fakeplayground.String // want "is reachable behind a"
+	x fakeplayground.String // want "is reachable through"
 }
 
 type directFakeLogfusc struct {
-	x fakelogfusc.Secret[string] // want "is reachable behind a"
+	x fakelogfusc.Secret[string] // want "is reachable through"
 }
 
 type directFakeSecrecy struct {
-	x fakesecrecy.Secret[string] // want "is reachable behind a"
+	x fakesecrecy.Secret[string] // want "is reachable through"
 }
 
 // SecretString is not itself a configured safe type, but its inner
 // fakesecrecy.Secret[[]byte] field is — so the walk catches it transitively.
 type directFakeSecrecyString struct {
-	x fakesecrecy.SecretString // want "is reachable behind a"
+	x fakesecrecy.SecretString // want "is reachable through"
 }
 
 // Slice variant.
 type sliceField struct {
-	xs []fakesensitive.String // want "is reachable behind a"
+	xs []fakesensitive.String // want "is reachable through"
 }
 
 // Array variant.
 type arrayField struct {
-	xs [3]fakesensitive.String // want "is reachable behind a"
+	xs [3]fakesensitive.String // want "is reachable through"
 }
 
 // Pointer variant — *fakesensitive.String is *<non-compound>.
@@ -67,12 +67,12 @@ type pointerField struct {
 
 // Map key variant.
 type mapKeyField struct {
-	m map[fakesensitive.String]int // want "is reachable behind a"
+	m map[fakesensitive.String]int // want "is reachable through"
 }
 
 // Map value variant.
 type mapValueField struct {
-	m map[int]fakesensitive.String // want "is reachable behind a"
+	m map[int]fakesensitive.String // want "is reachable through"
 }
 
 // Chan variant — channels print address, not content, so no leak.
@@ -82,43 +82,43 @@ type chanField struct {
 
 // RenamedImport tests detection with a renamed import alias.
 type renamedImport struct {
-	y fs.String // want "is reachable behind a"
+	y fs.String // want "is reachable through"
 }
 
 // DotImport tests detection with a dot-import.
 type dotImport struct {
-	z String // want "is reachable behind a"
+	z String // want "is reachable through"
 }
 
 // NestedTransitive tests transitive detection: an unexported struct field
 // whose type contains a sensitive field.
 type middleInner struct {
-	secret fakesensitive.String // want "is reachable behind a"
+	secret fakesensitive.String // want "is reachable through"
 }
 
 type nestedTransitive struct {
-	inner middleInner // want "is reachable behind a"
+	inner middleInner // want "is reachable through"
 }
 
 // RecursiveNode tests that recursive types don't hang and still detect
 // sensitive fields.
 type RecursiveNode struct {
-	next  *RecursiveNode // want "is reachable behind a"
-	inner middleInner    // want "is reachable behind a"
+	next  *RecursiveNode // want "is reachable through"
+	inner middleInner    // want "is reachable through"
 }
 
 // RecursiveSensitive tests that a recursive type WITH a sensitive field
 // directly is still detected (no false negative from visited set).
 type recursiveSensitive struct {
-	self *recursiveSensitive  // want "is reachable behind a"
-	x    fakesensitive.String // want "is reachable behind a"
+	self *recursiveSensitive  // want "is reachable through"
+	x    fakesensitive.String // want "is reachable through"
 }
 
 // SecretExposerField — a field of a SecretExposer interface type (ExposeSecret method)
 // is flagged when reachable under a disable factor:
 // the concrete value's Formatter won't fire, and the content may leak.
 type secretExposerField struct {
-	s fakesensitive.Secret[string] // want "is reachable behind a"
+	s fakesensitive.Secret[string] // want "is reachable through"
 }
 
 // EmptyInterfaceField — any/interface{} is NOT flagged:
@@ -185,7 +185,7 @@ type HandlePrimitiveField struct {
 // *<compound>, so structurallySafe=false. Under a disabled path
 // the Format interface is bypassed and content leaks.
 type HandleStructField struct {
-	x fakesensitive.Handle[SomeStruct] // want "is reachable behind a"
+	x fakesensitive.Handle[SomeStruct] // want "is reachable through"
 }
 
 // HandleGenericNonCompound — Handle[T] where T is constrained to non-compound types.
@@ -198,20 +198,20 @@ type HandleGenericNonCompound[T fakesensitive.NonCompound] struct {
 // HandleGenericCompound — Handle[T] where T can be a compound type (SomeStruct).
 // The *T inside Handle could be *<compound> → structurallySafe=false.
 type HandleGenericCompound[T fakesensitive.CompoundOrPrimitive] struct {
-	x fakesensitive.Handle[T] // want "is reachable behind a"
+	x fakesensitive.Handle[T] // want "is reachable through"
 }
 
 // HandleGenericAny — Handle[T] where T is unconstrained (any).
 // The *T inside Handle can be anything → structurallySafe=false.
 type HandleGenericAny[T any] struct {
-	x fakesensitive.Handle[T] // want "is reachable behind a"
+	x fakesensitive.Handle[T] // want "is reachable through"
 }
 
 // StarInnerExported — an exported *inner field: the pointer is
 // non-Formatter, so bp=true, disabling interfaces for the subtree.
 // The walk reaches fakesensitive.String inside inner and reports a leak.
 type StarInnerExported struct {
-	M *inner // want "is reachable behind a"
+	M *inner // want "is reachable through"
 }
 
 // StarInnerUnexported — an unexported *inner field: fd=true from
@@ -219,7 +219,7 @@ type StarInnerExported struct {
 // inner is *<compound> (a struct), so badVerb dereferences it.
 // The safe type fakesensitive.String inside inner leaks.
 type StarInnerUnexported struct {
-	m *inner // want "is reachable behind a"
+	m *inner // want "is reachable through"
 }
 
 // WrapTPlayground is the playground reproducer:
@@ -227,7 +227,7 @@ type StarInnerUnexported struct {
 // The non-Formatter pointer triggers badVerb, disabling interfaces,
 // and the Formatter type's content leaks.
 type WrapTPlayground struct {
-	t *outerT // want "is reachable behind a"
+	t *outerT // want "is reachable through"
 }
 
 type outerT struct {
@@ -244,18 +244,18 @@ type StarStringClean struct {
 // orderIndependent tests that detection works regardless of field order.
 type orderIndependent struct {
 	First  int
-	second fakesensitive.String // want "is reachable behind a"
+	second fakesensitive.String // want "is reachable through"
 }
 
 // visitedCleanFirst tests that a type reached first via a clean path (exported field)
 // is still walked when reached later via a dirty path (unexported field).
 type visitedCleanFirst struct {
-	M fieldsdep.MidCleanFirst // want "is reachable behind a"
+	M fieldsdep.MidCleanFirst // want "is reachable through"
 }
 
 // visitedDirtyFirst is the same as visitedCleanFirst with the opposite field order.
 type visitedDirtyFirst struct {
-	M fieldsdep.MidDirtyFirst // want "is reachable behind a"
+	M fieldsdep.MidDirtyFirst // want "is reachable through"
 }
 
 // fmtWrapper redacts itself via fmt.Formatter, so it is a safe terminal.
@@ -272,41 +272,41 @@ type FormatterWrapperClean struct {
 
 // noFormatWrapper is the same as fmtWrapper without Format.
 type noFormatWrapper struct {
-	secret fakesensitive.String // want "is reachable behind a"
+	secret fakesensitive.String // want "is reachable through"
 }
 
 // NoFormatWrapperFlagged — a wrapper without Format is not a terminal.
 type NoFormatWrapperFlagged struct {
-	W noFormatWrapper // want "is reachable behind a"
+	W noFormatWrapper // want "is reachable through"
 }
 
 // wrongSigWrapper has a Format method which is not fmt.Formatter.
 type wrongSigWrapper struct {
-	secret fakesensitive.String // want "is reachable behind a"
+	secret fakesensitive.String // want "is reachable through"
 }
 
 func (wrongSigWrapper) Format(int) {}
 
 // WrongSigWrapperFlagged — Format with a wrong signature is not a terminal.
 type WrongSigWrapperFlagged struct {
-	W wrongSigWrapper // want "is reachable behind a"
+	W wrongSigWrapper // want "is reachable through"
 }
 
 // ptrFmtWrapper has Format only on the pointer receiver.
 type ptrFmtWrapper struct {
-	secret fakesensitive.String // want "is reachable behind a"
+	secret fakesensitive.String // want "is reachable through"
 }
 
 func (*ptrFmtWrapper) Format(fmt.State, rune) {}
 
 // PtrFmtWrapperFlagged — fmt never calls a pointer-only Format on a value.
 type PtrFmtWrapperFlagged struct {
-	W ptrFmtWrapper // want "is reachable behind a"
+	W ptrFmtWrapper // want "is reachable through"
 }
 
 // UnexportedFmtWrapper — under an unexported field Format does not fire.
 type UnexportedFmtWrapper struct {
-	w fmtWrapper // want "is reachable behind a"
+	w fmtWrapper // want "is reachable through"
 }
 
 // fmtWrapperHolder is a plain struct holding a Formatter wrapper.
@@ -316,5 +316,5 @@ type fmtWrapperHolder struct {
 
 // FmtWrapperBehindPointer — a non-Formatter pointer disables Format of the pointee's fields.
 type FmtWrapperBehindPointer struct {
-	P *fmtWrapperHolder // want "is reachable behind a"
+	P *fmtWrapperHolder // want "is reachable through"
 }

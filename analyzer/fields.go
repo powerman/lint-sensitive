@@ -29,21 +29,21 @@ func newFieldsAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis
 // formatDiagnostic builds the diagnostic message for a field that leaks
 // through a disabled Formatter/Stringer/GoStringer path.
 func formatDiagnostic(field *types.Var, factor *disableFactor) string {
-	var behind string
+	var via string
 	switch factor.kind {
 	case factorUnexportedField:
-		behind = fmt.Sprintf("unexported field %q", factor.name)
+		via = fmt.Sprintf("an unexported field %q", factor.name)
 	case factorNonFormatterPointer:
-		behind = fmt.Sprintf("non-Formatter pointer to %s", factor.name)
+		via = fmt.Sprintf("a non-Formatter pointer to %s", factor.name)
 	default:
-		behind = factor.kind
+		via = factor.kind
 	}
 	return fmt.Sprintf(
-		"sensitive field %q is reachable behind a %s; "+
+		"sensitive field %q is reachable through %s; "+
 			"the safe type's fmt.Formatter/Stringer/GoStringer then does not fire "+
 			"and the field is not structurally protected "+
 			"— fmt can print its secret content",
-		field.Name(), behind)
+		field.Name(), via)
 }
 
 // formatterStructs returns struct types declared by a named type which implements [fmt.Formatter].
