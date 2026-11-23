@@ -701,6 +701,12 @@ func (m matcher) walk(t types.Type, fd, bp bool, visited map[walkKey]bool, facto
 		return false // address/header/primitive
 
 	case *types.Named:
+		// A named type with fmt.Formatter reached with fmt interfaces still enabled
+		// redacts under every verb, so it is a safe terminal (same trust as *types.Pointer).
+		// Under fd/bp the method may not fire, so it must not be trusted there.
+		if !fd && !bp && m.hasMethod(t, methodFormat) {
+			return false
+		}
 		return m.walk(u.Underlying(), fd, bp, visited, factorAt)
 	default:
 		return false

@@ -46,14 +46,35 @@ func formatDiagnostic(field *types.Var, factor *disableFactor) string {
 		field.Name(), behind)
 }
 
+// formatterStructs returns struct types declared by a named type which implements [fmt.Formatter].
+// Their fields are not checked:
+// such a type is a safe terminal wherever fmt can reach it with interfaces enabled,
+// and the cases where it cannot are reported at the field which holds the type.
+func (m matcher) formatterStructs(pass *analysis.Pass, in *inspector.Inspector) map[*ast.StructType]bool {
+	res := make(map[*ast.StructType]bool)
+	in.Preorder([]ast.Node{(*ast.TypeSpec)(nil)}, func(n ast.Node) {
+		ts := n.(*ast.TypeSpec) //nolint:forcetypeassert // Guaranteed by the node filter.
+		st, ok := ts.Type.(*ast.StructType)
+		if !ok {
+			return
+		}
+		if obj := pass.TypesInfo.Defs[ts.Name]; obj != nil && m.hasMethod(obj.Type(), methodFormat) {
+			res[st] = true
+		}
+	})
+	return res
+}
+
 // runFields is the shared core used by both flag-driven and New()-based fields analyzers.
 func runFields(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
 
+	formatterStructs := m.formatterStructs(pass, inspectResult)
+
 	nodeFilter := []ast.Node{(*ast.StructType)(nil)}
 	inspectResult.Preorder(nodeFilter, func(n ast.Node) {
 		st, ok := n.(*ast.StructType)
-		if !ok {
+		if !ok || formatterStructs[st] {
 			return
 		}
 		typ := pass.TypesInfo.TypeOf(st)

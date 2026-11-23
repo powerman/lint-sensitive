@@ -8,6 +8,7 @@ import (
 	. "fakesensitive"
 	fs "fakesensitive"
 	"fieldsdep"
+	"fmt"
 )
 
 // SomeStruct is a simple struct used as a type parameter.
@@ -255,4 +256,65 @@ type visitedCleanFirst struct {
 // visitedDirtyFirst is the same as visitedCleanFirst with the opposite field order.
 type visitedDirtyFirst struct {
 	M fieldsdep.MidDirtyFirst // want "is reachable behind a"
+}
+
+// fmtWrapper redacts itself via fmt.Formatter, so it is a safe terminal.
+type fmtWrapper struct {
+	secret fakesensitive.String
+}
+
+func (fmtWrapper) Format(fmt.State, rune) {}
+
+// FormatterWrapperClean — a named type with Format on a clean path is a safe terminal.
+type FormatterWrapperClean struct {
+	W fmtWrapper // No diagnostic: Format fires and overrides every verb.
+}
+
+// noFormatWrapper is the same as fmtWrapper without Format.
+type noFormatWrapper struct {
+	secret fakesensitive.String // want "is reachable behind a"
+}
+
+// NoFormatWrapperFlagged — a wrapper without Format is not a terminal.
+type NoFormatWrapperFlagged struct {
+	W noFormatWrapper // want "is reachable behind a"
+}
+
+// wrongSigWrapper has a Format method which is not fmt.Formatter.
+type wrongSigWrapper struct {
+	secret fakesensitive.String // want "is reachable behind a"
+}
+
+func (wrongSigWrapper) Format(int) {}
+
+// WrongSigWrapperFlagged — Format with a wrong signature is not a terminal.
+type WrongSigWrapperFlagged struct {
+	W wrongSigWrapper // want "is reachable behind a"
+}
+
+// ptrFmtWrapper has Format only on the pointer receiver.
+type ptrFmtWrapper struct {
+	secret fakesensitive.String // want "is reachable behind a"
+}
+
+func (*ptrFmtWrapper) Format(fmt.State, rune) {}
+
+// PtrFmtWrapperFlagged — fmt never calls a pointer-only Format on a value.
+type PtrFmtWrapperFlagged struct {
+	W ptrFmtWrapper // want "is reachable behind a"
+}
+
+// UnexportedFmtWrapper — under an unexported field Format does not fire.
+type UnexportedFmtWrapper struct {
+	w fmtWrapper // want "is reachable behind a"
+}
+
+// fmtWrapperHolder is a plain struct holding a Formatter wrapper.
+type fmtWrapperHolder struct {
+	W fmtWrapper
+}
+
+// FmtWrapperBehindPointer — a non-Formatter pointer disables Format of the pointee's fields.
+type FmtWrapperBehindPointer struct {
+	P *fmtWrapperHolder // want "is reachable behind a"
 }
