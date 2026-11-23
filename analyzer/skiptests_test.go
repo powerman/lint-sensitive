@@ -53,3 +53,35 @@ func TestSkipGenerated(t *testing.T) {
 	}
 	t.Fatal("sensitivefields not found in New() result")
 }
+
+// TestSkipReliability verifies that skip-tests and skip-generated
+// also apply to the reliability-level diagnostics:
+// references in skipped files are ignored,
+// and a type referenced both there and in a regular file is reported in the regular file.
+func TestSkipReliability(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cfg  analyzer.Config
+		pkg  string
+	}{
+		{"skip-tests", analyzer.Config{SkipTests: true}, "skiptests_reliability"},
+		{"skip-generated", analyzer.Config{SkipGenerated: true}, "skipgen_reliability"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tc.cfg.Types = reliabilityTypes
+			tc.cfg.RequireMarshalJSON = true
+			for _, a := range analyzer.New(tc.cfg) {
+				if a.Name == "sensitivefields" {
+					analysistest.Run(t, analysistest.TestData(), a, tc.pkg)
+					return
+				}
+			}
+			t.Fatal("sensitivefields not found in New() result")
+		})
+	}
+}
