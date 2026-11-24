@@ -1,4 +1,9 @@
-package analyzer //nolint:testpackage // Must be in package analyzer to reach the unexported table.
+package analyzer //nolint:testpackage // Must be in package analyzer to reach the unexported tables.
 
-// The fake test type has no real import path, but it emulates a known type with a revealing method.
-func init() { revealingMethods["fakeconceal.Text"] = []string{methodMarshalText} }
+// The fake test types have no real import path, but they emulate known types.
+func init() {
+	revealingMethods["fakeconceal.Text"] = []string{methodMarshalText}
+	nonSecretFields["fakecamo.Secret"] = []string{"hash"}
+	nonSecretFields["example.com/testcamo.Missing"] = []string{"nosuch"}
+	nonSecretFields["example.com/testcamo.Secret"] = []string{"hash"}
+}

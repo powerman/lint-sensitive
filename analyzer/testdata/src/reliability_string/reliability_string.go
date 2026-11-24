@@ -1,6 +1,7 @@
 package reliability_string
 
 import (
+	"fakecamo"
 	"fakesensitive"
 	"fakesecrecy"
 )
@@ -53,4 +54,15 @@ type CheckPtrRecv struct {
 // The type has a value-receiver String method, so it passes String-level safety.
 type CheckNotComparable struct {
 	X fakesensitive.NotComparable
+}
+
+// fakecamo.Secret is structurally protected once its hash field is ignored;
+// Unlisted has the same shape, but its hash field counts.
+
+type CheckCamo struct {
+	X fakecamo.Secret[string]
+}
+
+type CheckCamoUnlisted struct {
+	X fakecamo.Unlisted // want "configured safe type fakecamo.Unlisted does not guarantee String-level safety"
 }

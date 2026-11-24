@@ -1,6 +1,7 @@
 package reliability_format
 
 import (
+	"fakecamo"
 	"fakesensitive"
 	"fakesecrecy"
 )
@@ -70,4 +71,15 @@ type CheckDoublePtrAndOther struct {
 
 type CheckCallback struct {
 	X fakesensitive.Callback // want "configured safe type fakesensitive.Callback does not guarantee format-level safety"
+}
+
+// fakecamo.Secret is structurally protected once its hash field is ignored;
+// Unlisted has the same shape, but its hash field counts.
+
+type CheckCamo struct {
+	X fakecamo.Secret[string]
+}
+
+type CheckCamoUnlisted struct {
+	X fakecamo.Unlisted // want "configured safe type fakecamo.Unlisted does not guarantee format-level safety"
 }

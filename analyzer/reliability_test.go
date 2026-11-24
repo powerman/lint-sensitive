@@ -10,7 +10,7 @@ import (
 // reliabilityTypes is the set of fake test types for reliability-level tests.
 // It mirrors testTypes from analyzer_test.go but omits fakeplayground
 // (which no reliability testdata uses).
-var reliabilityTypes = []string{"fakesensitive", "fakesecrecy.Secret", "fakelogfusc", "fakeconceal.Text", "fakeconceal.Bytes"}
+var reliabilityTypes = []string{"fakesensitive", "fakesecrecy.Secret", "fakelogfusc", "fakeconceal.Text", "fakeconceal.Bytes", "fakecamo"}
 
 // TestRequireMarshalJSON verifies that -require-marshal-json emits diagnostics
 // for safe types that lack encoding.TextMarshaler and json.Marshaler.

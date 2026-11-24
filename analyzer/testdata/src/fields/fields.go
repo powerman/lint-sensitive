@@ -2,6 +2,7 @@ package fields
 
 import (
 	"fakeconceal"
+	"fakecamo"
 	"fakelogfusc"
 	"fakeplayground"
 	"fakesecrecy"
@@ -453,4 +454,16 @@ type PtrToHolderOfConceal struct {
 
 type holderOfConceal struct {
 	S *fakeconceal.Text
+}
+
+// Structurally protected once the hash field of fakecamo.Secret is ignored,
+// so disabling fmt methods has nothing to weaken.
+type camoUnexported struct {
+	x fakecamo.Secret[string]
+}
+
+// Unlisted keeps its hash field in the check, so it is not structurally protected,
+// but it has no fmt methods either: there is nothing to disable, -sensitive.require-* reports it.
+type camoUnlistedUnexported struct {
+	x fakecamo.Unlisted
 }

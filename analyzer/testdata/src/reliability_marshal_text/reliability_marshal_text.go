@@ -1,6 +1,7 @@
 package reliability_marshal_text
 
 import (
+	"fakecamo"
 	"fakesensitive"
 	"fakesecrecy"
 )
@@ -30,4 +31,10 @@ type CheckDecoy struct {
 
 type CheckPtrRecv struct {
 	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee text marshal safety.*declared only on a pointer receiver.*: MarshalText\\)"
+}
+
+// fakecamo.Secret has no marshalers.
+
+type CheckCamo struct {
+	X fakecamo.Secret[string] // want "configured safe type fakecamo.Secret does not guarantee text marshal safety"
 }

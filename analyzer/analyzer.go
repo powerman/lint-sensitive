@@ -32,6 +32,15 @@ var revealingMethods = map[string][]string{ // Const.
 	"github.com/shoenig/go-conceal.Text": {methodMarshalText},
 }
 
+// nonSecretFields lists fields of known types which fmt prints but which never hold the secret,
+// so they do not break the structural protection of the type.
+// They apply to a matched type whether it comes from defaultTypes or not.
+// Only top-level fields of the listed type are skipped, not fields of nested types.
+var nonSecretFields = map[string][]string{ // Const.
+	// A maphash fingerprint with a per-process seed, used for ==.
+	"github.com/rbranson/camo.Secret": {"hash"},
+}
+
 // matcherFunc is the type of functions that retrieve a matcher from an analysis pass.
 // It abstracts over the two ways to obtain a matcher:
 // from New() (always returns the same pre-built matcher)

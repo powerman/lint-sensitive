@@ -53,6 +53,10 @@ type typeClass struct {
 	textMarshaler    bool // t implements encoding.TextMarshaler
 	structurallySafe bool
 
+	// ignoredFields holds names of the fields skipped by the structural check
+	// as known not to hold the secret (see nonSecretFields).
+	ignoredFields []string
+
 	// ptrOnly holds names of the methods above which only *t has,
 	// so they are not called on a t value and do not count as implemented.
 	ptrOnly map[string]bool
@@ -332,14 +336,14 @@ func (c *checker) classify(t *types.Named) *typeClass {
 	}
 
 	tc := &typeClass{
-		fmtFormatter:     c.hasMethod(t, methodFormat),
-		fmtStringer:      c.hasMethod(t, methodString),
-		fmtGoStringer:    c.hasMethod(t, methodGoString),
-		jsonMarshaler:    c.hasMethod(t, methodMarshalJSON),
-		textMarshaler:    c.hasMethod(t, methodMarshalText),
-		ptrOnly:          c.ptrOnlyMethods(t),
-		structurallySafe: c.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)),
+		fmtFormatter:  c.hasMethod(t, methodFormat),
+		fmtStringer:   c.hasMethod(t, methodString),
+		fmtGoStringer: c.hasMethod(t, methodGoString),
+		jsonMarshaler: c.hasMethod(t, methodMarshalJSON),
+		textMarshaler: c.hasMethod(t, methodMarshalText),
+		ptrOnly:       c.ptrOnlyMethods(t),
 	}
+	tc.structurallySafe, tc.ignoredFields = c.isStructurallySafeNamed(t)
 	for _, name := range revealingMethods[qualifiedName(t)] {
 		if tc.revealing == nil {
 			tc.revealing = make(map[string]bool)
@@ -489,6 +493,31 @@ func (m matcher) structural(t types.Type, visited map[types.Type]bool) (safe, pr
 	return false, false
 }
 
+// isStructurallySafeNamed is [matcher.isStructurallySafe] for a configured named type,
+// ignoring its top-level fields listed in nonSecretFields.
+// It also returns the names of the fields which were ignored:
+// a listed name which the struct does not have is not ignored
+// (the library changed), so the type falls back to the plain rule, which is the safe direction.
+func (m matcher) isStructurallySafeNamed(t *types.Named) (bool, []string) {
+	st, ok := t.Underlying().(*types.Struct)
+	names := nonSecretFields[qualifiedName(t)]
+	if !ok || len(names) == 0 {
+		return m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)), nil
+	}
+	visited := map[types.Type]bool{t.Underlying(): true}
+	var ignored []string
+	safe, protected := true, false
+	for f := range st.Fields() {
+		if slices.Contains(names, f.Name()) {
+			ignored = append(ignored, f.Name())
+			continue
+		}
+		s, p := m.structural(f.Type(), visited)
+		safe, protected = safe && s, protected || p
+	}
+	return safe && protected, ignored
+}
+
 // ptrFmt reports whether *t has a fmt method,
 // i.e. whether fmt holding a *t can redact it when the path does not disable the method.
 func (c *typeClass) ptrFmt() bool {
@@ -503,6 +532,9 @@ func debugClassify(t *types.Named, tc *typeClass) {
 		t,
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
 		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe)
+	if len(tc.ignoredFields) > 0 {
+		line += fmt.Sprintf(" nonSecretFields=%v", tc.ignoredFields)
+	}
 	if len(tc.revealing) > 0 {
 		line += fmt.Sprintf(" revealing=%v", slices.Sorted(maps.Keys(tc.revealing)))
 	}

@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1024,5 +1025,46 @@ type PromotedFromPtrEmbed struct{ PtrRecv }
 				}
 			})
 		}
+	}
+}
+
+// TestNonSecretFields verifies that the fields listed in nonSecretFields
+// are ignored by the structural check of that type only.
+func TestNonSecretFields(t *testing.T) {
+	t.Parallel()
+
+	pkg := types.NewPackage("example.com/testcamo", "testcamo")
+	newType := func(name, field string) *types.Named {
+		return types.NewNamed(
+			types.NewTypeName(token.NoPos, pkg, name, nil),
+			types.NewStruct([]*types.Var{
+				types.NewField(token.NoPos, pkg, "_", types.Typ[types.UnsafePointer], false),
+				types.NewField(token.NoPos, pkg, field, types.Typ[types.Uint64], false),
+			}, nil),
+			nil,
+		)
+	}
+
+	tests := []struct {
+		name        string
+		typ         *types.Named
+		wantSafe    bool
+		wantIgnored []string
+	}{
+		{"listed", newType("Secret", "hash"), true, []string{"hash"}},
+		{"unlisted", newType("Unlisted", "hash"), false, nil},
+		{"listed field missing", newType("Missing", "hash"), false, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			c := newChecker(newMatcher(Config{}))
+			gotSafe, gotIgnored := c.isStructurallySafeNamed(tt.typ)
+			if gotSafe != tt.wantSafe || !slices.Equal(gotIgnored, tt.wantIgnored) {
+				t.Errorf("isStructurallySafeNamed() = %v, %v, want %v, %v",
+					gotSafe, gotIgnored, tt.wantSafe, tt.wantIgnored)
+			}
+		})
 	}
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/powerman/lint-sensitive/analyzer"
 )
 
-const testTypes = "fakesensitive,fakeplayground,fakelogfusc,fakesecrecy.Secret,fakeconceal.Text,fakeconceal.Bytes"
+const testTypes = "fakesensitive,fakeplayground,fakelogfusc,fakesecrecy.Secret,fakeconceal.Text,fakeconceal.Bytes,fakecamo"
 
 func TestMain(m *testing.M) {
 	err := analyzer.FlagAnalyzer.Flags.Set("types", testTypes)
