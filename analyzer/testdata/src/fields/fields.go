@@ -239,14 +239,14 @@ type FormatFuncWrapField struct {
 }
 
 // StarInnerExported — an exported *inner field: the pointer is
-// non-Formatter, so fd=true, disabling interfaces for the subtree.
+// non-Formatter, so badVerb may dereference it and the subtree is printed without methods.
 // The walk reaches fakesensitive.String inside inner and reports a leak.
 type StarInnerExported struct {
 	M *inner // want "is reachable through"
 }
 
-// StarInnerUnexported — an unexported *inner field: fd=true from
-// the field itself AND from the non-Formatter pointer.
+// StarInnerUnexported — an unexported *inner field: methods are off
+// because of the field itself AND because of the non-Formatter pointer.
 // inner is *<compound> (a struct), so badVerb dereferences it.
 // The safe type fakesensitive.String inside inner leaks.
 type StarInnerUnexported struct {
@@ -447,13 +447,54 @@ type valueConcealUnexported struct {
 	x fakeconceal.Text
 }
 
-// A pointer to a holder struct is still a disable factor.
+// badVerb dereferences only the pointer which caused it,
+// so a pointer nested in the pointee prints as an address.
 type PtrToHolderOfConceal struct {
-	H *holderOfConceal // want "is reachable through"
+	H *holderOfConceal // No diagnostic: S prints as an address.
 }
 
 type holderOfConceal struct {
 	S *fakeconceal.Text
+}
+
+type ptrToHolderOfConcealUnexported struct {
+	h *holderOfConceal // No diagnostic: the same after an unexported field.
+}
+
+// A nested pointer to a holder with a leaking value prints as an address too:
+// P is reported at its own declaration, but not through H.
+type PtrToPtrToInner struct {
+	H *ptrToInnerHolder // No diagnostic: P prints as an address.
+}
+
+type ptrToInnerHolder struct {
+	P *inner // want "is reachable through"
+}
+
+// A defined pointer type has no methods,
+// so fmt calls neither the methods of *T nor Format of the pointee through it.
+type ptrToSecrecy *fakesecrecy.Secret[string]
+
+type NamedPtrToSecrecy struct {
+	X ptrToSecrecy // want "is reachable through a non-Formatter pointer"
+}
+
+type ptrToConceal *fakeconceal.Text
+
+type NamedPtrToConceal struct {
+	X ptrToConceal // want "is reachable through a non-Formatter pointer"
+}
+
+type ptrToPtrFmtWrapper *ptrFmtWrapper
+
+type NamedPtrToPtrFmtWrapper struct {
+	P ptrToPtrFmtWrapper // want "is reachable through a non-Formatter pointer"
+}
+
+type ptrToString *fakesensitive.String
+
+type NamedPtrToNonCompound struct {
+	X ptrToString // No diagnostic: badVerb does not dereference a pointer to a string kind.
 }
 
 // Structurally protected once the hash field of fakecamo.Secret is ignored,

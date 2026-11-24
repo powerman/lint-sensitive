@@ -100,12 +100,13 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 				continue
 			}
 			var factor disableFactor
-			fd := !f.Exported()
-			if fd {
+			st := stateClean
+			if !f.Exported() {
+				st = stateNoMethods
 				factor = disableFactor{kind: factorUnexportedField, name: f.Name()}
 			}
 			var path []walkStep
-			if c.walk(f.Type(), fd, make(map[walkKey]bool), &factor, &path) {
+			if c.walk(f.Type(), st, make(map[walkKey]bool), &factor, &path) {
 				pass.Report(analysis.Diagnostic{
 					Pos:     f.Pos(),
 					Message: formatDiagnostic(f, &factor),

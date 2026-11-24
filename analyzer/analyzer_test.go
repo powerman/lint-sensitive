@@ -87,6 +87,11 @@ func TestFieldsRelatedInformation(t *testing.T) {
 			"non-Formatter pointer to fakeconceal.Text",
 			"safe type fakeconceal.Text",
 		},
+		// A defined pointer type is named in its hop.
+		"NamedPtrToConceal.X": {
+			"non-Formatter pointer type fields.ptrToConceal to fakeconceal.Text",
+			"safe type fakeconceal.Text",
+		},
 	}
 
 	results := analysistest.Run(t, analysistest.TestData(), analyzer.FieldsAnalyzer, "fields")
