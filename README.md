@@ -123,18 +123,7 @@ server.go:9:14: sensitive value of type main.Server printed with %v exposes
 ```
 
 With [`-sensitive.detect-fields`](#detecting-fields-which-can-leak)
-it also reports every field on such a path, even when nothing prints it:
-
-```text
-server.go:2:  sensitive field "cfg" is reachable through an unexported field "cfg";
-              the safe type's fmt.Formatter/Stringer/GoStringer then does not fire
-              and the field is not structurally protected
-              — fmt can print its secret content
-session.go:2: sensitive field "Creds" is reachable through a non-Formatter pointer
-              to main.Credentials; the safe type's fmt.Formatter/Stringer/GoStringer
-              then does not fire and the field is not structurally protected
-              — fmt can print its secret content
-```
+it also reports every field on such a path, even when nothing prints it.
 
 ### The builtin `print`/`println` channel
 
@@ -265,6 +254,44 @@ Some files produce findings that cannot or should not be fixed:
   lint-sensitive -sensitive.skip-generated ./...
   ```
 
+### golangci-lint
+
+lint-sensitive is also a golangci-lint [module plugin](https://golangci-lint.run/docs/plugins/module-plugins/).
+Describe a custom golangci-lint build in `.custom-gcl.yml`:
+
+```yaml
+version: v2.15.0 # Your golangci-lint version.
+plugins:
+  - module: github.com/powerman/lint-sensitive
+    import: github.com/powerman/lint-sensitive/plugin
+    version: v0.8.0
+```
+
+Build it with `golangci-lint custom` (the result is `./custom-gcl`),
+enable the linter in `.golangci.yml` and run `./custom-gcl run`:
+
+```yaml
+version: '2'
+linters:
+  enable:
+    - sensitive
+  settings:
+    custom:
+      sensitive:
+        type: module
+        description: Detects leaks of sensitive values.
+        settings:
+          types:
+            - github.com/myorg/internal.Secret
+          detect-fields: true
+          require-marshal-json: true
+```
+
+The settings match the flags without the `-sensitive.` prefix,
+but `types` and `public` are YAML lists instead of comma-separated strings.
+There are no `skip-tests` and `skip-generated` settings:
+use `linters.exclusions` of golangci-lint instead.
+
 ### The `analyzer` package
 
 The linter logic lives in `github.com/powerman/lint-sensitive/analyzer`.
@@ -291,23 +318,21 @@ Three analyzers are registered in the `lint-sensitive` binary:
 | `sensitivefields` | Checks that safe types provide the interfaces required by the optional `-sensitive.require-*` flags. With `-sensitive.detect-fields` also detects struct fields (exported AND unexported) where an unexported field or a pointer on the path could disable redaction of a safe type. |
 | `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                                                                                                                                                                                 |
 
-### Limitations of `sensitivefmt`
-
-It reports what the program prints, so it checks only what it can see in the call:
-
-- an argument of an interface type is not checked, because its dynamic type is unknown;
-- a format string which is not a constant is not checked;
-- arguments forwarded as `args...` are not checked;
-- structured loggers without a format string (`log/slog`, zap or logrus fields) are not checked:
-  they format with `%v`/`%+v`, which `-sensitive.detect-fields` covers
-  (see [Detecting fields which can leak](#detecting-fields-which-can-leak)).
-
 ## Detecting fields which can leak
 
-By default the linter reports only what the program prints:
-a `fmt`-like call or a builtin `print` which exposes a safe type's secret.
-`-sensitive.detect-fields` also reports every struct field
-whose path to a safe type could leak with some verb,
+By default the linter reports only what the program prints,
+and `sensitivefmt` checks only what it can see in the call.
+It does not check:
+
+- an argument of an interface type, because its dynamic type is unknown;
+- a format string which is not a constant;
+- arguments forwarded as `args...`;
+- structured loggers without a format string (`log/slog`, zap or logrus fields),
+  which format with `%v`/`%+v`;
+- library types which their users will print.
+
+`-sensitive.detect-fields` covers these cases:
+it also reports every struct field whose path to a safe type could leak with some verb,
 even when no such print exists:
 
 ```bash
@@ -316,12 +341,6 @@ lint-sensitive -sensitive.detect-fields ./...
 
 It is off by default because it is a detector rather than a linter:
 a field may never be printed, and then the report is noise.
-Turn it on for what the call-site analysis cannot see:
-arguments of an interface type, non-constant format strings, `args...` forwarding,
-structured loggers (`log/slog`, zap or logrus fields) which format with `%v`/`%+v`,
-and library types which their users will print.
-
-The setting is `detect-fields` in the golangci-lint plugin, `Config.DetectFields` in the library.
 
 ## Optional reliability levels
 
