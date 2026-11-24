@@ -14,6 +14,7 @@ import (
 	playgroundSensitive "github.com/go-playground/sensitive"
 	"github.com/negrel/secrecy"
 	powermanSensitive "github.com/powerman/sensitive"
+	"github.com/rsjethani/secret/v2"
 )
 
 // Secret is a project-specific sensitive string type.
@@ -27,8 +28,8 @@ type Public string
 // leakDemo groups all leakable types as unexported fields.
 // Fields 1-4 are sensitive (caught by the linter). Field 5 is NOT sensitive
 // and should NOT be flagged — demonstrating type-level granularity.
-// Fields 6-7 use [sensitive.Ref] and [sensitive.Handle] which protect
-// against fmt reflection — also NOT flagged.
+// Fields 6-8 use [sensitive.Ref], [sensitive.Handle] and [secret.Text]
+// which protect against fmt reflection — also NOT flagged.
 // When printed via fmt, all raw values leak because reflection on unexported
 // fields bypasses Stringer/Formatter.
 type leakDemo struct {
@@ -39,6 +40,7 @@ type leakDemo struct {
 	public     Public
 	ref        powermanSensitive.Ref[string]    // no-leak: **T reflection-proof
 	handle     powermanSensitive.Handle[string] // no-leak: *string (non-compound)
+	rsjethani  secret.Text                      // no-leak: *string fields print as an address
 }
 
 // innerStruct contains an unexported sensitive field.
@@ -66,6 +68,7 @@ func main() {
 		public:     "value protected by Public (not sensitive)",
 		ref:        powermanSensitive.New("value protected by Ref from fmt reflection"),
 		handle:     powermanSensitive.Make("value protected by Handle from fmt reflection"),
+		rsjethani:  secret.NewText("value protected by rsjethani/secret.Text"),
 	})
 
 	// Pointer-to-compound leak: exported pointer field dereferences and leaks.

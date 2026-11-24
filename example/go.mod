@@ -7,6 +7,7 @@ require (
 	github.com/go-playground/sensitive v0.0.1
 	github.com/negrel/secrecy v0.7.0
 	github.com/powerman/sensitive v0.7.0
+	github.com/rsjethani/secret/v2 v2.3.1
 )
 
 require github.com/shopspring/decimal v1.6.0 // indirect

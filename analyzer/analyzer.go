@@ -4,8 +4,8 @@
 // in JSON, text marshaling and fmt output.
 //
 // By default, sensitive types are those defined in github.com/powerman/sensitive,
-// github.com/go-playground/sensitive, github.com/negrel/secrecy.Secret, and
-// github.com/angusgmorrison/logfusc.Secret.
+// github.com/go-playground/sensitive, github.com/negrel/secrecy.Secret,
+// github.com/angusgmorrison/logfusc.Secret, and github.com/rsjethani/secret/v2.Text.
 package analyzer
 
 import (
@@ -19,6 +19,7 @@ var defaultTypes = []string{ // Const.
 	"github.com/go-playground/sensitive",
 	"github.com/negrel/secrecy.Secret",
 	"github.com/angusgmorrison/logfusc.Secret",
+	"github.com/rsjethani/secret/v2.Text",
 }
 
 // matcherFunc is the type of functions that retrieve a matcher from an analysis pass.

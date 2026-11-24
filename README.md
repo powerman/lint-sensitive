@@ -142,7 +142,7 @@ println(s) // s3cr3t — Stringer/Formatter is never consulted
 
 ### Every supported library, both channels
 
-By default the linter recognises four sensitive-value libraries (see below).
+By default the linter recognises five sensitive-value libraries (see below).
 The [`example/`](example/) directory is a self-contained module with a runnable
 program that leaks every one of them through both channels
 — `fmt` reflection and builtin `print` —
@@ -201,7 +201,8 @@ lint-sensitive ./...
 
 By default, types from several sensitive-value libraries are recognized:
 `github.com/powerman/sensitive`, `github.com/go-playground/sensitive`,
-`github.com/negrel/secrecy.Secret`, and `github.com/angusgmorrison/logfusc.Secret`.
+`github.com/negrel/secrecy.Secret`, `github.com/angusgmorrison/logfusc.Secret`,
+and `github.com/rsjethani/secret/v2.Text`.
 If you use other libraries or project-specific types, extend via the `-sensitive.types` flag:
 
 ```bash
