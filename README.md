@@ -11,7 +11,9 @@
 ![macOS | amd64 arm64](https://img.shields.io/badge/macOS-amd64%20arm64-royalblue)
 ![Windows | amd64 arm64](https://img.shields.io/badge/Windows-amd64%20arm64-royalblue)
 
-Go linter to detect sensitive value leaks via `fmt` reflection and builtin `print`/`println`.
+Go linter to detect sensitive value leaks via `fmt` reflection and builtin `print`/`println`,
+and optionally check that safe types implement the interfaces needed to stay redacted
+in JSON, text marshaling and `fmt` output.
 
 ## What this linter is for
 

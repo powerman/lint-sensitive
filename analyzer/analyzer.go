@@ -1,5 +1,7 @@
 // Package analyzer provides analyzers for detecting sensitive value leaks
-// through Go's fmt reflection and builtin print/println.
+// through Go's fmt reflection and builtin print/println,
+// and for optionally checking that safe types implement the interfaces needed to stay redacted
+// in JSON, text marshaling and fmt output.
 //
 // By default, sensitive types are those defined in github.com/powerman/sensitive,
 // github.com/go-playground/sensitive, github.com/negrel/secrecy.Secret, and

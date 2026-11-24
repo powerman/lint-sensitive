@@ -1,5 +1,7 @@
 // Command lint-sensitive detects sensitive value leaks via fmt reflection
-// and builtin print/println.
+// and builtin print/println,
+// and optionally checks that safe types implement the interfaces needed to stay redacted
+// in JSON, text marshaling and fmt output.
 package main
 
 import (
