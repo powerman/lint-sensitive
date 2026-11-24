@@ -1030,9 +1030,9 @@ type PromotedFromPtrEmbed struct{ PtrRecv }
 	}
 }
 
-// TestNonSecretFields verifies that the fields listed in nonSecretFields
+// TestPublicFields verifies that the fields listed in publicFields
 // are ignored by the structural check of that type only.
-func TestNonSecretFields(t *testing.T) {
+func TestPublicFields(t *testing.T) {
 	t.Parallel()
 
 	pkg := types.NewPackage("example.com/testcamo", "testcamo")

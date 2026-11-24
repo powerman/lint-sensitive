@@ -4,7 +4,7 @@ package analyzer //nolint:testpackage // Must be in package analyzer to reach th
 func init() {
 	revealingMethods["fakeconceal.Text"] = []string{methodMarshalText}
 	revealingMethods["fakesensitive.RevealingString"] = []string{methodString}
-	nonSecretFields["fakecamo.Secret"] = []string{"hash"}
-	nonSecretFields["example.com/testcamo.Missing"] = []string{"nosuch"}
-	nonSecretFields["example.com/testcamo.Secret"] = []string{"hash"}
+	publicFields["fakecamo.Secret"] = []string{"hash"}
+	publicFields["example.com/testcamo.Missing"] = []string{"nosuch"}
+	publicFields["example.com/testcamo.Secret"] = []string{"hash"}
 }

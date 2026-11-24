@@ -25,7 +25,7 @@ func (s Secret[O]) Reveal() O {
 	return zero
 }
 
-// Unlisted has the same shape as Secret but is not in nonSecretFields.
+// Unlisted has the same shape as Secret but is not in publicFields.
 type Unlisted struct {
 	_    unsafe.Pointer
 	hash uint64

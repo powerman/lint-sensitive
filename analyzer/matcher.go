@@ -54,9 +54,9 @@ type typeClass struct {
 	structurallySafe bool
 	opaque           bool // t is a struct whose fields are all unexported and not embedded
 
-	// ignoredFields holds names of the fields skipped by the structural check
-	// as known not to hold the secret (see nonSecretFields).
-	ignoredFields []string
+	// publicFields holds names of the fields skipped by the structural check
+	// as known not to hold the secret (see publicFields).
+	publicFields []string
 
 	// ptrOnly holds names of the methods above which only *t has,
 	// so they are not called on a t value and do not count as implemented.
@@ -347,7 +347,7 @@ func (c *checker) classify(t *types.Named) *typeClass {
 		ptrOnly:       c.ptrOnlyMethods(t),
 		opaque:        isOpaqueStruct(t.Underlying()),
 	}
-	tc.structurallySafe, tc.ignoredFields = c.isStructurallySafeNamed(t)
+	tc.structurallySafe, tc.publicFields = c.isStructurallySafeNamed(t)
 	for _, name := range revealingMethods[qualifiedName(t)] {
 		if tc.revealing == nil {
 			tc.revealing = make(map[string]bool)
@@ -498,13 +498,13 @@ func (m matcher) structural(t types.Type, visited map[types.Type]bool) (safe, pr
 }
 
 // isStructurallySafeNamed is [matcher.isStructurallySafe] for a configured named type,
-// ignoring its top-level fields listed in nonSecretFields.
+// ignoring its top-level fields listed in publicFields.
 // It also returns the names of the fields which were ignored:
 // a listed name which the struct does not have is not ignored
 // (the library changed), so the type falls back to the plain rule, which is the safe direction.
 func (m matcher) isStructurallySafeNamed(t *types.Named) (bool, []string) {
 	st, ok := t.Underlying().(*types.Struct)
-	names := nonSecretFields[qualifiedName(t)]
+	names := publicFields[qualifiedName(t)]
 	if !ok || len(names) == 0 {
 		return m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)), nil
 	}
@@ -551,8 +551,8 @@ func debugClassify(t *types.Named, tc *typeClass) {
 		t,
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
 		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe, tc.opaque)
-	if len(tc.ignoredFields) > 0 {
-		line += fmt.Sprintf(" nonSecretFields=%v", tc.ignoredFields)
+	if len(tc.publicFields) > 0 {
+		line += fmt.Sprintf(" publicFields=%v", tc.publicFields)
 	}
 	if len(tc.revealing) > 0 {
 		line += fmt.Sprintf(" revealing=%v", slices.Sorted(maps.Keys(tc.revealing)))
