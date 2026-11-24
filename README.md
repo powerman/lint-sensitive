@@ -53,9 +53,8 @@ A sensitive type can protect its content in two ways:
    These are honoured by `fmt` only when the value is reachable
    through a clean (exported, non-pointer-indirect) path.
 2. **Structural protection**: storing the secret behind indirections
-   that `fmt` never follows — `**T`, `*interface{}`, `chan T`, `func() T`,
-   `unsafe.Pointer`, or `*<non-compound>` (`*string`, `*int`, etc.).
-   These always print as an address or header regardless of verb.
+   that `fmt` never follows (e.g. `**T` or `func() T`),
+   so it prints only an address regardless of verb.
 
 ## How protection silently breaks
 
@@ -89,8 +88,7 @@ fmt.Println(Server{cfg: Config{APIKey: "s3cr3t"}}) // {{s3cr3t}} — LEAK
 ```
 
 `APIKey` is still exported and its type is unchanged;
-the unexported `cfg` field alone flips `CanInterface()` to `false`
-for everything beneath it.
+the unexported `cfg` field alone stops `fmt` from calling methods of anything beneath it.
 
 ### A pointer to the holder
 
@@ -114,13 +112,6 @@ type Session struct {
 fmt.Printf("%s", Session{Creds: &Credentials{Token: "s3cr3t"}})
 // {%!s(*main.Credentials=&{s3cr3t})} — LEAK
 ```
-
-A pointer directly to a safe type is different:
-`fmt` holds the pointer, so the safe type is judged by the methods of the pointer.
-On a clean path they fire, so `Secret *secrecy.Secret[string]` is not reported,
-and a verb they do not handle is a matter for
-[`-sensitive.require-format`](#optional-reliability-levels).
-An unexported `secret *secrecy.Secret[string]` is still reported.
 
 The linter flags every field on such a path, naming the factor that disables
 redaction so the fix is obvious:
@@ -175,22 +166,14 @@ A type may implement `Format` and still print the secret through a buggy method.
 Such misuse is out of scope — the linter treats the presence of the interface
 as intent, because any other use of it would be pointless.
 
-Structural protection is judged differently:
-it counts only when every field of the type is protected,
-so an unrelated field (a callback, a counter, a cache) cannot fake it.
+Both of its checks surface places where the protection a developer **expects**
+silently does not hold:
 
-Because of this, the two checks it performs both exist for one purpose —
-to surface places where the protection a developer **expects** silently does not hold:
-
-- **Unconditional**: warn when a safe type's `Formatter`/`Stringer`/`GoStringer`
-  protection is disabled by a path-disable factor
-  (unexported field or non-`Formatter` pointer to a holder),
-  the type (or a pointer to it, if the path leads to the pointer) implements
-  at least one of these interfaces,
+- **Unconditional**: warn when an unexported field or a pointer on the path
+  disables the safe type's `Formatter`/`Stringer`/`GoStringer`
   and the type has no structural protection to fall back on.
-- **Optional reliability levels**: a config-driven check that warns when a safe
-  type does not provide enough protection for a configured attack surface.
-  Use it to state, per project, what "protected" must actually mean
+- **Optional reliability levels**: warn when a safe type does not protect the secret
+  on the surfaces (JSON, `fmt` verbs, …) the project requires
   (see [Optional reliability levels](#optional-reliability-levels)).
 
 ## Installation
@@ -250,9 +233,8 @@ Declare it as `import/path.TypeName.FieldName` with `-sensitive.public`
 lint-sensitive -sensitive.public=example.com/app.Credential.ID ./...
 ```
 
-Such a field is ignored when the linter decides
-whether the type is structurally protected or an opaque struct.
-This states a fact about the type and does not suppress findings:
+The linter then ignores this field when it judges the type's protection.
+This is not a way to suppress findings:
 a wrongly declared field hides real leaks of that type.
 
 Some files produce findings that cannot or should not be fixed:
@@ -270,8 +252,6 @@ Some files produce findings that cannot or should not be fixed:
   ```bash
   lint-sensitive -sensitive.skip-generated ./...
   ```
-
-Both flags default to `false` (diagnostics reported everywhere) and can be combined.
 
 ### The `analyzer` package
 
@@ -293,16 +273,16 @@ analyzers := analyzer.New(analyzer.Config{
 
 Two analyzers are registered in the `lint-sensitive` binary:
 
-| Name              | Description                                                                                                                                                                                                            |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sensitivefields` | Detects struct fields (exported AND unexported) where a safe type is reachable behind a path-disable factor. Also checks that safe types provide the interfaces required by the optional `-sensitive.require-*` flags. |
-| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                                                                                                                   |
+| Name              | Description                                                                                                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sensitivefields` | Detects struct fields (exported AND unexported) where an unexported field or a pointer on the path disables redaction of a safe type. Also checks that safe types provide the interfaces required by the optional `-sensitive.require-*` flags. |
+| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                                                                                                                                            |
 
 ## Optional reliability levels
 
 By default the linter only checks the **unconditional** condition:
 a safe type must not leak content when its Formatter/Stringer/GoStringer
-interface is disabled by a path-disable factor.
+interface is disabled by an unexported field or a pointer on the path.
 
 The unconditional check only guards against _weakening_ whatever protection a
 type already has; it says nothing about whether that protection is enough.
@@ -322,53 +302,31 @@ When a flag is set, every safe type used in the analyzed package
 is checked against the corresponding attack surface.
 Safe types that do not meet the requirement are reported.
 
-A type is checked by its own methods if the package uses it as a value anywhere.
-If the package uses it only through a pointer (`*T`),
-as `go-conceal` expects, the methods of `*T` count too:
-`fmt` and `encoding/json` call them for a pointer.
-
 The five surfaces and their acceptable safeguards:
 
-| Surface                    | Acceptable safeguards (any one)                                     |
-| -------------------------- | ------------------------------------------------------------------- |
-| JSON marshal               | `encoding.TextMarshaler` OR `json.Marshaler` OR opaque struct       |
-| Text marshal               | `encoding.TextMarshaler` OR (opaque struct AND `%v`/`%s` safeguard) |
-| All fmt verbs              | `fmt.Formatter` OR structurally-protected type                      |
-| `%#v`                      | `fmt.GoStringer` OR `fmt.Formatter` OR structurally-protected type  |
-| `%v`/`%s`/`%q`/`%x`¹/`%X`¹ | `fmt.Stringer` OR `fmt.Formatter` OR structurally-protected type    |
+| Surface                  | Acceptable safeguards (any one)                                     |
+| ------------------------ | ------------------------------------------------------------------- |
+| JSON marshal             | `encoding.TextMarshaler` OR `json.Marshaler` OR opaque struct       |
+| Text marshal             | `encoding.TextMarshaler` OR (opaque struct AND `%v`/`%s` safeguard) |
+| All fmt verbs            | `fmt.Formatter` OR structurally-protected type                      |
+| `%#v`                    | `fmt.GoStringer` OR `fmt.Formatter` OR structurally-protected type  |
+| `%v`/`%s`/`%q`/`%x`/`%X` | `fmt.Stringer` OR `fmt.Formatter` OR structurally-protected type    |
 
-¹ - Works on strings, but not on float types.
+An "opaque struct" has only unexported, non-embedded fields,
+so JSON, XML, YAML and TOML encoders write it empty.
+`log/slog` TextHandler prints such a struct with `%+v`,
+hence the extra `%v`/`%s` safeguard for text marshal.
 
-An "opaque struct" is a struct whose fields are all unexported (blank `_` included)
-and none is embedded; a type which is not a struct is never opaque.
-`encoding/json`, `encoding/xml`, `gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`
-and the `log/slog` JSONHandler write such a struct empty, whatever it holds.
-The `log/slog` TextHandler calls `encoding.TextMarshaler` and otherwise falls back to `%+v`,
-so for an opaque struct the text marshal rule also requires one of the `%v`/`%s` safeguards.
-Struct tags (`json:"-"`) are not considered:
-an exported field makes the struct not opaque.
-Public fields (built-in for known types or declared with `-sensitive.public`) are ignored.
+A "structurally-protected type" is a struct which stores the secret
+only behind indirections that `fmt` never follows
+(`**T`, `*string`, `*interface{}`, `chan T`, `func() T`, `unsafe.Pointer`, etc.).
+A single other field (`int`, `string`, `any`, a pointer to a struct, etc.)
+makes the whole type unprotected, because `fmt` prints that field as is.
 
-A "structurally-protected field" means one of:
-`**T`, `*interface{}`, `chan T`, `func() T`, `unsafe.Pointer`,
-or `*<non-compound>` (`*string`, `*int`, `*bool`, etc.),
-including a named type with such an underlying type (`type F func() string`).
-These are the types that `fmt.Printf` never dereferences —
-it always prints an address or header, regardless of the verb.
-
-A "structurally-protected type" is a struct whose every field is protected,
-with at least one structurally-protected field among them, possibly nested.
-Zero-size fields (`_ [0]func()`, `struct{}`) carry nothing and are ignored.
-A field is protected when it is a structurally-protected field,
-or a struct, a non-empty array, a slice or a map (both key and value)
-whose parts are all protected in turn, but never a pointer to them.
-A single unprotected field (`int`, `string`, `any`, a pointer to a struct, etc.)
-makes the whole type unprotected,
-because `fmt` prints that field as is.
-Public fields (built-in for known types or declared with `-sensitive.public`) are ignored.
-
-A method known to output the secret makes every surface it serves unsafe,
-whatever other safeguards the type has.
+Both definitions ignore public fields
+(declared with `-sensitive.public` or built in for supported libraries).
+A method which the linter knows to output the secret,
+like `MarshalText` of `go-conceal.Text`, never counts as a safeguard.
 
 ### Existing library support
 
@@ -377,24 +335,16 @@ each type in the existing libraries provides (as of 2026-11-24).
 
 | Safe type                           | JSON | Text | fmt | `%#v` | `%v`/`%s` | Structural |
 | ----------------------------------- | ---- | ---- | --- | ----- | --------- | ---------- |
-| `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓²         |
-| `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
-| `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
-| `andrewbenton/go-secrets.Secret[T]` | ✓    | ✓    | ✓   | ✓     | ✓         | ✓⁴         |
+| `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
+| `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
+| `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
+| `andrewbenton/go-secrets.Secret[T]` | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
+| `rbranson/camo.Secret[T]`           | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `go-playground/sensitive.String`    | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
-| `shoenig/go-conceal.Text`⁵          | ✗    | ✗    | ✗   | ✓     | ✓         | ✗          |
-| `shoenig/go-conceal.Bytes`⁵         | ✓    | ✓    | ✗   | ✓     | ✓         | ✗          |
-| `negrel/secrecy.Secret[T]`          | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
+| `negrel/secrecy.Secret[T]`          | ✓    | ✓    | ✗   | ✓     | ✓         | ✗          |
 | `angusgmorrison/logfusc.Secret[T]`  | ✓    | ✓    | ✗   | ✓     | ✓         | ✗          |
-| `rbranson/camo.Secret[T]`           | ✓    | ✓    | ✓   | ✓     | ✓         | ✓⁶         |
-
-¹ — via `encoding.TextMarshaler`.<br/>
-² — `**T` — double pointer, `fmt` never dereferences it.<br/>
-³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.<br/>
-⁴ — `func() T` closures, `fmt` never dereferences.<br/>
-⁵ — the library hands out `*Text` and `*Bytes`, so the methods are counted on the pointer;
-`(*Text).MarshalText` outputs the secret, so JSON and Text fail.<br/>
-⁶ — `unsafe.Pointer`; the `hash` field is a fingerprint the linter knows to ignore.
+| `shoenig/go-conceal.Bytes`          | ✓    | ✓    | ✗   | ✓     | ✓         | ✗          |
+| `shoenig/go-conceal.Text`           | ✗    | ✗    | ✗   | ✓     | ✓         | ✗          |
 
 ### Flags
 
