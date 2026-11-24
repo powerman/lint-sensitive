@@ -271,12 +271,23 @@ analyzers := analyzer.New(analyzer.Config{
 
 ## Analyzers
 
-Two analyzers are registered in the `lint-sensitive` binary:
+Three analyzers are registered in the `lint-sensitive` binary:
 
 | Name              | Description                                                                                                                                                                                                                                     |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sensitivefmt`    | Detects calls of print functions (`fmt.*`, `log.*`, `testing.T.*` and their wrappers) which print the content of a sensitive value, with the verb the format string gives to the argument.                                                      |
 | `sensitivefields` | Detects struct fields (exported AND unexported) where an unexported field or a pointer on the path disables redaction of a safe type. Also checks that safe types provide the interfaces required by the optional `-sensitive.require-*` flags. |
 | `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                                                                                                                                            |
+
+### Limitations of `sensitivefmt`
+
+It reports what the program prints, so it checks only what it can see in the call:
+
+- an argument of an interface type is not checked, because its dynamic type is unknown;
+- a format string which is not a constant is not checked;
+- arguments forwarded as `args...` are not checked;
+- structured loggers without a format string (`log/slog`, zap or logrus fields) are not checked:
+  they format with `%v`/`%+v`, which `sensitivefields` covers.
 
 ## Optional reliability levels
 

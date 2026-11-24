@@ -18,14 +18,22 @@ const (
 	factorNonFormatterPointer = "nonFormatterPointer"
 )
 
-// printState is how fmt prints the values which walk reaches, see ARCHITECTURE.md ("The walk").
-type printState uint8
+// printMode is how fmt prints the values which walk reaches, see ARCHITECTURE.md ("The walk").
+type printMode uint8
 
 const (
-	stateClean     printState = iota // Methods are called, the verb of the caller is used.
-	stateNoMethods                   // Inside an unexported field: no methods, the verb is kept.
-	stateErroring                    // Inside the pointer which caused badVerb.
+	stateClean     printMode = iota // Methods are called, the verb of the caller is used.
+	stateNoMethods                  // Inside an unexported field: no methods, the verb is kept.
+	stateErroring                   // Inside the pointer which caused badVerb.
 )
+
+// printState is the print mode and the verb of the caller.
+// A known verb means the call-site check, which also checks a safe type without fmt methods;
+// the verb is kept in stateErroring for that reason only.
+type printState struct {
+	mode printMode
+	verb fmtVerb
+}
 
 // walkKey is the memoization key of walk.
 type walkKey struct {
@@ -77,6 +85,9 @@ func leakStep(named *types.Named) walkStep {
 // excluding the walked type itself.
 func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep) bool {
 	t = types.Unalias(t)
+	if _, isPtr := t.Underlying().(*types.Pointer); !isPtr && c.wrapsNonError(t, st) {
+		st.mode = stateErroring
+	}
 	key := walkKey{t: t, st: st}
 	if visited[key] {
 		return false
@@ -102,7 +113,7 @@ func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, fa
 			c.walk(u.Elem(), st, visited, factorAt, path)
 	case *types.Interface:
 		// Only SecretExposer interfaces are flagged, see ARCHITECTURE.md ("The walk").
-		return c.isSecretExposer(u) && st != stateClean
+		return c.isSecretExposer(u) && st.mode != stateClean
 	case *types.Named:
 		return c.walkNamed(u, st, visited, factorAt, path)
 	default:
@@ -114,10 +125,15 @@ func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, fa
 // With fmt interfaces enabled the safe type is safe.
 // Otherwise, if it implements any of them
 // AND has no structural protection, its content leaks.
+// With a known verb, fmt interfaces are enabled only for the methods which serve that verb.
 func (c *checker) walkSafe(named *types.Named, st printState, path *[]walkStep) bool {
 	cls := c.classify(named)
-	leaks := st != stateClean &&
-		(cls.fmtFormatter || cls.fmtStringer || cls.fmtGoStringer) && !cls.structurallySafe
+	exposed := st.mode != stateClean || st.verb.known() && !c.fires(named, st)
+	// The declaration check does not report a type without fmt methods,
+	// but a call which prints such a value does leak it.
+	leaks := exposed &&
+		(cls.fmtFormatter || cls.fmtStringer || cls.fmtGoStringer || st.verb.known()) &&
+		!cls.structurallySafe
 	if leaks {
 		*path = append(*path, leakStep(named))
 	}
@@ -151,8 +167,8 @@ func enterField(f *types.Var, st printState, factorAt *disableFactor) (printStat
 	if f.Exported() {
 		return st, factorAt
 	}
-	if st == stateClean {
-		st = stateNoMethods
+	if st.mode == stateClean {
+		st.mode = stateNoMethods
 	}
 	if factorAt.kind == "" {
 		factorAt = &disableFactor{kind: factorUnexportedField, name: f.Name()}
@@ -170,7 +186,8 @@ func (c *checker) walkNamed(u *types.Named, st printState,
 	}
 	// A Formatter reached with fmt interfaces still enabled is a safe terminal
 	// (see ARCHITECTURE.md, "What fmt does").
-	if st == stateClean && c.hasMethod(u, methodFormat) {
+	// A known verb also makes a terminal of the type with a method which serves that verb.
+	if c.fires(u, st) {
 		return false
 	}
 	if !c.walk(u.Underlying(), st, visited, factorAt, path) {
@@ -190,18 +207,21 @@ func (c *checker) walkPointer(holder types.Type, p *types.Pointer, st printState
 	visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep,
 ) bool {
 	// Under badVerb every pointer below the one which caused it prints as an address.
-	if st == stateErroring {
+	if st.mode == stateErroring {
 		return false
 	}
 	// A Formatter pointer reached on a clean path is a safe terminal.
-	isFormatter := c.hasMethod(holder, methodFormat)
-	if isFormatter && st == stateClean {
+	if c.fires(holder, st) {
 		return false
 	}
 	// Under badVerb at depth 0, fmt only dereferences the pointer
 	// when the pointee is a compound kind (Struct/Slice/Array/Map).
 	// *<non-compound> pointers always go to fmtPointer, which prints the address.
 	if !isCompoundKind(p.Elem()) {
+		return false
+	}
+	// Below the top level a pointer prints as an address under such verbs, without badVerb.
+	if st.verb.pointerPrintsAddress() {
 		return false
 	}
 	// The factor is published to factorAt only when the walk leaks,
@@ -216,11 +236,13 @@ func (c *checker) walkPointer(holder types.Type, p *types.Pointer, st printState
 		// and T has no structural protection.
 		_, definedPtr := holder.(*types.Named)
 		cls := c.classify(named)
-		if st == stateClean && !definedPtr || !cls.ptrFmt() || cls.structurallySafe {
+		// With a known verb the methods which serve it have been checked above.
+		assumeFires := st.mode == stateClean && !definedPtr && !st.verb.known()
+		if assumeFires || !cls.ptrFmt() && !st.verb.known() || cls.structurallySafe {
 			return false
 		}
 		*path = append(*path, leakStep(named))
-	} else if !c.walk(p.Elem(), stateErroring, visited, &factor, path) {
+	} else if !c.walk(p.Elem(), printState{mode: stateErroring, verb: st.verb}, visited, &factor, path) {
 		return false
 	}
 	*factorAt = factor

@@ -1228,7 +1228,7 @@ func TestMethodShapeKnowsAllMethods(t *testing.T) {
 	t.Parallel()
 
 	for _, name := range []string{
-		methodFormat, methodString, methodGoString, methodMarshalJSON, methodMarshalText,
+		methodFormat, methodString, methodError, methodGoString, methodMarshalJSON, methodMarshalText,
 	} {
 		if shape, ok := methodShape(name); !ok || shape == nil {
 			t.Errorf("methodShape(%q) is unknown", name)

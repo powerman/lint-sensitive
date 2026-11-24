@@ -114,5 +114,6 @@ func New(cfg Config) []*analysis.Analyzer {
 	return []*analysis.Analyzer{
 		newFieldsAnalyzer(req, get),
 		newPrintAnalyzer(req, get),
+		newFormatAnalyzer(req, get),
 	}
 }

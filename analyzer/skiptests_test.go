@@ -59,3 +59,25 @@ func TestSkipReliability(t *testing.T) {
 		})
 	}
 }
+
+// TestSkipFormat verifies that skip-tests and skip-generated apply to sensitivefmt.
+func TestSkipFormat(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		cfg  analyzer.Config
+		pkg  string
+	}{
+		{"skip-tests", analyzer.Config{SkipTests: true}, "skiptests_fmt"},
+		{"skip-generated", analyzer.Config{SkipGenerated: true}, "skipgen_fmt"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			tc.cfg.Types = strings.Split(fmtTypes, ",")
+			runNew(t, tc.cfg, "sensitivefmt", tc.pkg)
+		})
+	}
+}

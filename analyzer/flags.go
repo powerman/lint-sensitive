@@ -12,7 +12,7 @@ import (
 )
 
 // NewFlagAnalyzers returns the analyzers of the lint-sensitive binary:
-// sensitive, sensitivefields and sensitiveprint.
+// sensitive, sensitivefields, sensitiveprint and sensitivefmt.
 // The first one registers the -sensitive.* flags
 // and passes the resulting configuration to the others via Requires.
 // The -sensitive.require-* and -sensitive.debug flags affect only sensitivefields.
@@ -48,7 +48,10 @@ func NewFlagAnalyzers() []*analysis.Analyzer {
 		return m, nil
 	}
 	req := []*analysis.Analyzer{inspect.Analyzer, fa}
-	return []*analysis.Analyzer{fa, newFieldsAnalyzer(req, get), newPrintAnalyzer(req, get)}
+	return []*analysis.Analyzer{
+		fa, newFieldsAnalyzer(req, get), newPrintAnalyzer(req, get),
+		newFormatAnalyzer(req, get),
+	}
 }
 
 var errNoMatcher = errors.New("sensitive analyzer result is not a matcher")

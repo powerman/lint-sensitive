@@ -72,6 +72,8 @@ func TestExampleEndToEnd(t *testing.T) {
 		// Use trailing space to distinguish "print " from "println".
 		{fragment: `sensitive value passed to builtin print `, want: 2},
 		{fragment: `sensitive value passed to builtin println`, want: 2},
+		// sensitivefmt: 1 diagnostic (the fmt.Println of leakDemo).
+		{fragment: `sensitive value of type main.leakDemo printed with %v exposes`, want: 1},
 	}
 	totalWant := 0
 	for _, c := range checks {

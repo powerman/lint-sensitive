@@ -82,7 +82,7 @@ func (c *checker) formatterStructs(pass *analysis.Pass, in *inspector.Inspector)
 // checkField reports the field f of a struct declared in the analyzed package
 // if fmt can print the content of a safe type through it.
 func (c *checker) checkField(pass *analysis.Pass, f *types.Var) {
-	st, factor := enterField(f, stateClean, &disableFactor{})
+	st, factor := enterField(f, printState{mode: stateClean}, &disableFactor{})
 	var path []walkStep
 	if c.walk(f.Type(), st, make(map[walkKey]bool), factor, &path) {
 		pass.Report(analysis.Diagnostic{

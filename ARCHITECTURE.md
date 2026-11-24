@@ -19,6 +19,9 @@ User-facing behaviour (flags, supported libraries, how to fix a finding) is in t
 | `analyzer/fields.go`     | The `sensitivefields` analyzer: runs the walk for every struct field.                    |
 | `analyzer/levelcheck.go` | The optional reliability levels (`-sensitive.require-*`), part of `sensitivefields`.     |
 | `analyzer/print.go`      | The `sensitiveprint` analyzer: builtin `print`/`println`.                                |
+| `analyzer/format.go`     | The `sensitivefmt` analyzer: finds print calls and the verb of each argument.            |
+| `analyzer/fmtparse.go`   | `parseFormat`: operations of a format string, a port of `doPrintf` of the fmt package.   |
+| `analyzer/verb.go`       | `fmtVerb` and `leaksAsArg`: which methods and pointers fmt uses for a verb.              |
 
 ## Protection model
 
@@ -108,6 +111,30 @@ Rationale:
   and the cases where `fmt` cannot reach the type with interfaces enabled
   are reported at the field which holds the type.
 
+## fmt rules for a known verb
+
+The declaration check does not know the verb of the caller (the zero verb),
+so it assumes the verb which triggers `badVerb`.
+The call-site check knows it and follows `fmt` exactly (`leaksAsArg`, `analyzer/verb.go`):
+
+- `%T` never leaks.
+  `%p` prints an address for a pointer, chan, func, map, slice and unsafe.Pointer,
+  and goes to `badVerb` for any other value.
+- A value which has a method serving the verb is a terminal, whether it is a safe type or not:
+  `Formatter` serves every verb, `GoString` serves `%#v`,
+  `Error` and `String` serve `v s x X q`.
+  `%w` of an error behaves like `%v`;
+  `%w` of a value which is not an error is `badVerb` for the whole value.
+  The method set is that of the value `fmt` holds (see [Classification](#classification-of-a-safe-type)).
+- A pointer below the top level prints an address under `v p b o d x X`
+  and goes to `badVerb` under any other verb.
+- The pointer which is the argument itself is dereferenced under every verb
+  when the pointee is a struct, array, slice or map, and the pointee is printed with the same verb.
+- An argument of an interface type is not checked: its dynamic type is unknown.
+- A safe type without fmt methods is a leak under a verb which prints its content,
+  unlike in the declaration check, which assumes such a type is covered by the reliability levels.
+  A structurally protected type is never a leak.
+
 ## The walk
 
 `walk` (`analyzer/walk.go`) is the `Formatter`-termination walk.
@@ -116,7 +143,8 @@ would leak its secret content when `fmt` prints that type in a print state.
 
 The print state is how `fmt` prints the values which the walk reaches:
 
-- clean: `fmt` calls methods of the value and uses the verb of the caller;
+- clean: `fmt` calls methods of the value which serve the verb of the caller
+  (with the zero verb only `Formatter` is certain to fire);
 - no methods: the path entered an unexported field.
   `fmt` does not call methods there, but keeps the verb of the caller,
   so a pointer may still cause `badVerb`, which dereferences it;
@@ -127,7 +155,8 @@ The print state is how `fmt` prints the values which the walk reaches:
 Details of the contract:
 
 - The visited set prevents infinite recursion on cyclic types.
-  It is keyed by the print state too, because a type is safe or leaking depending on it.
+  It is keyed by the print state (the mode and the verb) too,
+  because a type is safe or leaking depending on it.
 - When the walk returns true, it reports the first disable factor on the path, if any,
   and the hops of the leaking path ordered from the innermost (the safe type) to the outermost.
   Both are left unchanged when the walk returns false:

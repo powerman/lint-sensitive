@@ -44,7 +44,7 @@ func TestPlugin(t *testing.T) {
 		names[i] = a.Name
 	}
 	slices.Sort(names)
-	if want := []string{"sensitivefields", "sensitiveprint"}; !slices.Equal(names, want) {
+	if want := []string{"sensitivefields", "sensitivefmt", "sensitiveprint"}; !slices.Equal(names, want) {
 		t.Fatalf("analyzers = %v, want %v", names, want)
 	}
 

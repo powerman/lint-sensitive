@@ -6,6 +6,7 @@ import "go/types"
 const (
 	methodFormat      = "Format"
 	methodString      = "String"
+	methodError       = "Error"
 	methodGoString    = "GoString"
 	methodMarshalJSON = "MarshalJSON"
 	methodMarshalText = "MarshalText"
@@ -20,7 +21,7 @@ func methodShape(name string) (func(*types.Signature) bool, bool) {
 	switch name {
 	case methodFormat:
 		return isFormatSig, true
-	case methodString, methodGoString:
+	case methodString, methodGoString, methodError:
 		return isNoArgsResult(types.Typ[types.String]), true
 	case methodMarshalJSON, methodMarshalText:
 		return isMarshalSig, true

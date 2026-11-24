@@ -15,13 +15,23 @@ import (
 
 const testTypes = "fakesensitive,fakeplayground,fakelogfusc,fakesecrecy.Secret,fakeconceal.Text,fakeconceal.Bytes,fakecamo"
 
+// fmtTypes are the safe types of the sensitivefmt tests.
+const fmtTypes = "fakesensitive.String,fakeconceal.Text,fakestringer"
+
 // flagAnalyzer returns the analyzer with the given name from a fresh analyzer.NewFlagAnalyzers()
 // whose -sensitive.types flag is set to testTypes.
 func flagAnalyzer(t *testing.T, name string) *analysis.Analyzer {
 	t.Helper()
 
+	return flagAnalyzerTypes(t, name, testTypes)
+}
+
+// flagAnalyzerTypes is like flagAnalyzer with the given -sensitive.types.
+func flagAnalyzerTypes(t *testing.T, name, types string) *analysis.Analyzer {
+	t.Helper()
+
 	analyzers := analyzer.NewFlagAnalyzers()
-	err := analyzers[0].Flags.Set("types", testTypes)
+	err := analyzers[0].Flags.Set("types", types)
 	if err != nil {
 		t.Fatalf("set -types flag: %v", err)
 	}
@@ -176,4 +186,14 @@ func TestInvalidPublicFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFormatAnalyzer(t *testing.T) {
+	t.Parallel()
+	analysistest.Run(t, analysistest.TestData(), flagAnalyzerTypes(t, "sensitivefmt", fmtTypes), "fmtcall")
+}
+
+func TestNewFormatAnalyzer(t *testing.T) {
+	t.Parallel()
+	runNew(t, analyzer.Config{Types: strings.Split(fmtTypes, ",")}, "sensitivefmt", "fmtcall")
 }
