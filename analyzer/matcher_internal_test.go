@@ -12,7 +12,6 @@ import (
 	"reflect"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 
 	"golang.org/x/tools/go/analysis"
@@ -788,13 +787,9 @@ func TestDebugFlag(t *testing.T) {
 // logical type, even when called with different *types.Named objects
 // representing the same type (which happens when the same type is analyzed
 // in different packages, each with its own *types.Named pointer).
-// Not parallel — clears global debugPrinted state.
 //
-//nolint:paralleltest // Uses global state, cannot run in parallel.
+//nolint:paralleltest // Redirects the global log output, cannot run in parallel.
 func TestDebugDedup(t *testing.T) {
-	// Clear global dedup state from any previous test run.
-	debugPrinted = sync.Map{}
-
 	testPkg := types.NewPackage("example.com/testdedup", "testdedup")
 
 	// Create a named type to classify.
@@ -866,12 +861,9 @@ func TestDebugDedup(t *testing.T) {
 // TestDebugDedupInstances verifies that instances of one generic type
 // with different classification are both printed,
 // because structurallySafe depends on the type arguments.
-// Not parallel — clears global debugPrinted state.
 //
-//nolint:paralleltest // Uses global state, cannot run in parallel.
+//nolint:paralleltest // Redirects the global log output, cannot run in parallel.
 func TestDebugDedupInstances(t *testing.T) {
-	debugPrinted = sync.Map{}
-
 	pkg := types.NewPackage("example.com/testgeneric", "testgeneric")
 	tp := types.NewTypeParam(
 		types.NewTypeName(token.NoPos, pkg, "T", nil),
@@ -1227,5 +1219,22 @@ func TestClassifyOpaquePublic(t *testing.T) {
 				t.Errorf("classify().opaque = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestMethodShapeKnowsAllMethods verifies that methodShape knows every method name
+// the analyzer uses, so a typo cannot silently turn a check off.
+func TestMethodShapeKnowsAllMethods(t *testing.T) {
+	t.Parallel()
+
+	for _, name := range []string{
+		methodFormat, methodString, methodGoString, methodMarshalJSON, methodMarshalText,
+	} {
+		if shape, ok := methodShape(name); !ok || shape == nil {
+			t.Errorf("methodShape(%q) is unknown", name)
+		}
+	}
+	if _, ok := methodShape("Unknown"); ok {
+		t.Error("methodShape(\"Unknown\") is known")
 	}
 }

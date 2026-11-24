@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-// TestRunFlag verifies that every registered flag reaches the matcher built by runFlag.
+// TestFlagsReachMatcher verifies that every registered flag reaches the matcher
+// built by the "sensitive" analyzer of NewFlagAnalyzers.
 // It fails when a flag is registered under one name but wired to another Config field,
 // which the New(Config{...}) based tests cannot detect.
-//
-// The test mutates the shared FlagAnalyzer.Flags (TestMain also sets -types there),
-// so it must not run in parallel and restores each flag it changes.
-func TestRunFlag(t *testing.T) { //nolint:paralleltest // Mutates the shared FlagAnalyzer.Flags.
+func TestFlagsReachMatcher(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		flag, value string
 		check       func(m matcher) bool
@@ -38,46 +38,51 @@ func TestRunFlag(t *testing.T) { //nolint:paralleltest // Mutates the shared Fla
 	}
 
 	covered := make(map[string]bool)
-	for _, tc := range tests { //nolint:paralleltest // Same reason as above.
+	for _, tc := range tests {
 		covered[tc.flag] = true
 		t.Run(tc.flag, func(t *testing.T) {
-			f := FlagAnalyzer.Flags.Lookup(tc.flag)
-			if f == nil {
+			t.Parallel()
+
+			fa := NewFlagAnalyzers()[0]
+			if fa.Flags.Lookup(tc.flag) == nil {
 				t.Fatalf("flag %q is not registered", tc.flag)
 			}
-			orig := f.Value.String()
-			t.Cleanup(func() { _ = FlagAnalyzer.Flags.Set(tc.flag, orig) })
-
-			err := FlagAnalyzer.Flags.Set(tc.flag, tc.value)
+			err := fa.Flags.Set(tc.flag, tc.value)
 			if err != nil {
 				t.Fatal(err)
 			}
-			res, err := runFlag(nil)
+			res, err := fa.Run(nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !tc.check(res.(matcher)) {
+			m, ok := res.(matcher)
+			if !ok {
+				t.Fatalf("result is %T, want matcher", res)
+			}
+			if !tc.check(m) {
 				t.Errorf("setting -%s=%s did not reach the matcher", tc.flag, tc.value)
 			}
 		})
 	}
 
-	FlagAnalyzer.Flags.VisitAll(func(f *flag.Flag) {
+	NewFlagAnalyzers()[0].Flags.VisitAll(func(f *flag.Flag) {
 		if !covered[f.Name] {
-			t.Errorf("flag %q is not covered by TestRunFlag", f.Name)
+			t.Errorf("flag %q is not covered by TestFlagsReachMatcher", f.Name)
 		}
 	})
 }
 
-// TestRunFlagInvalidPublic verifies that a malformed -sensitive.public entry is an error.
-func TestRunFlagInvalidPublic(t *testing.T) { //nolint:paralleltest // Mutates the shared FlagAnalyzer.Flags.
-	t.Cleanup(func() { _ = FlagAnalyzer.Flags.Set("public", "") })
-	err := FlagAnalyzer.Flags.Set("public", "example.com/a.T")
+// TestFlagsInvalidPublic verifies that a malformed -sensitive.public entry is an error.
+func TestFlagsInvalidPublic(t *testing.T) {
+	t.Parallel()
+
+	fa := NewFlagAnalyzers()[0]
+	err := fa.Flags.Set("public", "example.com/a.T")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = runFlag(nil)
+	_, err = fa.Run(nil)
 	if err == nil || !strings.Contains(err.Error(), `invalid -sensitive.public entry "example.com/a.T"`) {
-		t.Errorf("runFlag() error = %v, want invalid -sensitive.public entry", err)
+		t.Errorf("Run() error = %v, want invalid -sensitive.public entry", err)
 	}
 }

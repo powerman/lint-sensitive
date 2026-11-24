@@ -23,6 +23,13 @@ type matcher struct {
 	skipGenerated bool
 	debug         bool
 
+	// debugPrinted holds the debug lines already printed.
+	// It is keyed by the whole line, which includes the type arguments,
+	// so instances of one generic type with different classification are all printed,
+	// while the same type seen in several packages is printed only once.
+	// The per-package matchers of the flag-driven path share one map (see NewFlagAnalyzers).
+	debugPrinted *sync.Map
+
 	// public maps a qualifiedName of a type to the names of its fields
 	// which never hold the secret: the built-in publicFields plus Config.PublicFields.
 	public map[string][]string
@@ -77,17 +84,6 @@ type typeClass struct {
 	revealing map[string]bool
 }
 
-// debugPrinted holds the debug lines already printed.
-// It is keyed by the whole line, which includes the type arguments,
-// so instances of one generic type with different classification are all printed,
-// while the same type seen in several packages is printed only once.
-// The alternative would require plumbing shared state
-// across every per-package matcher in the flag-driven path,
-// which the go/analysis framework does not support.
-//
-//nolint:gochecknoglobals // Debug-only global dedup.
-var debugPrinted sync.Map
-
 // disableFactor records the first factor on the path
 // that disables [Formatter]/[Stringer]/[GoStringer] interface dispatch.
 type disableFactor struct {
@@ -112,6 +108,7 @@ func newMatcher(cfg Config) matcher {
 		skipTests:     cfg.SkipTests,
 		skipGenerated: cfg.SkipGenerated,
 		debug:         cfg.Debug,
+		debugPrinted:  new(sync.Map),
 		public:        make(map[string][]string, len(publicFields)+len(cfg.PublicFields)),
 
 		requireMarshalJSON: cfg.RequireMarshalJSON,
@@ -147,7 +144,7 @@ var errBadPublicField = errors.New("want import/path.TypeName.FieldName with an 
 // parsePublicField splits "import/path.TypeName.FieldName"
 // into the key of the type (as returned by qualifiedName) and the field name.
 func parsePublicField(entry string) (typeKey, field string, err error) {
-	typeKey, field, ok := strings.CutLast(entry, ".")
+	typeKey, field, ok := cutLast(entry)
 	if !ok || !token.IsIdentifier(field) {
 		return "", "", errBadPublicField
 	}
@@ -157,11 +154,21 @@ func parsePublicField(entry string) (typeKey, field string, err error) {
 	return typeKey, field, nil
 }
 
+// cutLast splits s around the last dot.
+// The standard library has no such function in Go 1.26, the version required by go.mod.
+func cutLast(s string) (before, after string, found bool) {
+	i := strings.LastIndexByte(s, '.')
+	if i < 0 {
+		return s, "", false
+	}
+	return s[:i], s[i+1:], true
+}
+
 // parseTypeEntry splits "import/path.TypeName" with an exported TypeName.
 // It reports false for any other entry,
 // e.g. an import path which ends with a dot-suffix like "gopkg.in/yaml.v3".
 func parseTypeEntry(entry string) (pkg, name string, ok bool) {
-	pkg, name, ok = strings.CutLast(entry, ".")
+	pkg, name, ok = cutLast(entry)
 	if !ok || pkg == "" || !token.IsIdentifier(name) || !token.IsExported(name) {
 		return "", "", false
 	}
@@ -284,16 +291,17 @@ const (
 // with the given name.
 // The check is structural (no stdlib interface resolution),
 // so a same-named method with another signature is not mistaken for the interface method.
-func methodShape(name string) func(*types.Signature) bool {
+// The second result is false for an unknown name.
+func methodShape(name string) (func(*types.Signature) bool, bool) {
 	switch name {
 	case methodFormat:
-		return isFormatSig
+		return isFormatSig, true
 	case methodString, methodGoString:
-		return isNoArgsResult(types.Typ[types.String])
+		return isNoArgsResult(types.Typ[types.String]), true
 	case methodMarshalJSON, methodMarshalText:
-		return isMarshalSig
+		return isMarshalSig, true
 	default:
-		panic("hasMethod: unsupported method name " + name)
+		return nil, false
 	}
 }
 
@@ -334,7 +342,10 @@ func isMarshalSig(sig *types.Signature) bool {
 // fmt and encoding/json never call them on a non-addressable value.
 // Promoted value-receiver methods are part of the method set of both t and *t.
 func (c *checker) hasMethod(t types.Type, name string) bool {
-	hasShape := methodShape(name)
+	hasShape, known := methodShape(name)
+	if !known {
+		return false
+	}
 	for method := range c.msets.MethodSet(t).Methods() {
 		if method.Obj().Name() != name {
 			continue
@@ -416,7 +427,7 @@ func (c *checker) classify(t *types.Named) *typeClass {
 	c.classes.Set(t, tc)
 
 	if c.debug {
-		debugClassify(t, tc)
+		c.debugClassify(t, tc)
 	}
 
 	return tc
@@ -596,7 +607,7 @@ func (c *typeClass) ptrFmt() bool {
 
 // debugClassify prints one classification line to stderr
 // unless the same line was already printed.
-func debugClassify(t *types.Named, tc *typeClass) {
+func (m matcher) debugClassify(t *types.Named, tc *typeClass) {
 	line := fmt.Sprintf("sensitive type %s: Formatter=%v Stringer=%v GoStringer=%v json.Marshaler=%v encoding.TextMarshaler=%v structurallySafe=%v opaque=%v",
 		t,
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
@@ -607,7 +618,7 @@ func debugClassify(t *types.Named, tc *typeClass) {
 	if len(tc.revealing) > 0 {
 		line += fmt.Sprintf(" revealing=%v", slices.Sorted(maps.Keys(tc.revealing)))
 	}
-	if _, loaded := debugPrinted.LoadOrStore(line, struct{}{}); !loaded {
+	if _, loaded := m.debugPrinted.LoadOrStore(line, struct{}{}); !loaded {
 		log.Print(line)
 	}
 }

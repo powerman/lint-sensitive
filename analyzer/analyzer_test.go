@@ -15,22 +15,31 @@ import (
 
 const testTypes = "fakesensitive,fakeplayground,fakelogfusc,fakesecrecy.Secret,fakeconceal.Text,fakeconceal.Bytes,fakecamo"
 
-func TestMain(m *testing.M) {
-	err := analyzer.FlagAnalyzer.Flags.Set("types", testTypes)
+// flagAnalyzer returns the analyzer with the given name from a fresh analyzer.NewFlagAnalyzers()
+// whose -sensitive.types flag is set to testTypes.
+func flagAnalyzer(t *testing.T, name string) *analysis.Analyzer {
+	t.Helper()
+
+	analyzers := analyzer.NewFlagAnalyzers()
+	err := analyzers[0].Flags.Set("types", testTypes)
 	if err != nil {
-		panic("failed to set -types flag: " + err.Error())
+		t.Fatalf("set -types flag: %v", err)
 	}
-	m.Run()
+	i := slices.IndexFunc(analyzers, func(a *analysis.Analyzer) bool { return a.Name == name })
+	if i < 0 {
+		t.Fatalf("%s not found in NewFlagAnalyzers() result", name)
+	}
+	return analyzers[i]
 }
 
 func TestFieldsAnalyzer(t *testing.T) {
 	t.Parallel()
-	analysistest.Run(t, analysistest.TestData(), analyzer.FieldsAnalyzer, "fields")
+	analysistest.Run(t, analysistest.TestData(), flagAnalyzer(t, "sensitivefields"), "fields")
 }
 
 func TestPrintAnalyzer(t *testing.T) {
 	t.Parallel()
-	analysistest.Run(t, analysistest.TestData(), analyzer.PrintAnalyzer, "printcheck")
+	analysistest.Run(t, analysistest.TestData(), flagAnalyzer(t, "sensitiveprint"), "printcheck")
 }
 
 // runNew runs the analyzer with the given name from analyzer.New(cfg) on the testdata package pkg.
@@ -94,7 +103,7 @@ func TestFieldsRelatedInformation(t *testing.T) {
 		},
 	}
 
-	results := analysistest.Run(t, analysistest.TestData(), analyzer.FieldsAnalyzer, "fields")
+	results := analysistest.Run(t, analysistest.TestData(), flagAnalyzer(t, "sensitivefields"), "fields")
 	got := make(map[string][]string)
 	for _, r := range results {
 		fieldAt := make(map[token.Pos]string)

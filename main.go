@@ -28,11 +28,7 @@ func main() {
 	// analysisflags.addVersionFlag registers -V only when flag.Lookup("V") == nil.
 	flag.Var(versionFlag{}, "V", "print version and exit")
 
-	multichecker.Main(
-		analyzer.FlagAnalyzer,
-		analyzer.FieldsAnalyzer,
-		analyzer.PrintAnalyzer,
-	)
+	multichecker.Main(analyzer.NewFlagAnalyzers()...)
 }
 
 // versionFlag implements the -V=full protocol required by `go vet`.

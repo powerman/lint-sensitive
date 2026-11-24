@@ -48,7 +48,7 @@ var publicFields = map[string][]string{ // Const.
 // matcherFunc is the type of functions that retrieve a matcher from an analysis pass.
 // It abstracts over the two ways to obtain a matcher:
 // from New() (always returns the same pre-built matcher)
-// and from FlagAnalyzer (reads the matcher from pass.ResultOf).
+// and from NewFlagAnalyzers (reads the matcher from pass.ResultOf).
 // The error reports an invalid Config.
 type matcherFunc func(*analysis.Pass) (matcher, error)
 

@@ -1,8 +1,11 @@
 module github.com/powerman/lint-sensitive
 
-go 1.27.3
+go 1.26.0
 
-require golang.org/x/tools v0.53.0
+require (
+	github.com/golangci/plugin-module-register v0.1.2
+	golang.org/x/tools v0.53.0
+)
 
 require (
 	golang.org/x/mod v0.43.0 // indirect
