@@ -51,6 +51,18 @@ func shortTypeString(t types.Type) string {
 	return types.TypeString(t, func(p *types.Package) string { return p.Name() })
 }
 
+// fieldStep describes the struct field on a leaking path.
+func fieldStep(f *types.Var) walkStep {
+	kind := "field"
+	if !f.Exported() {
+		kind = "unexported field"
+	}
+	return walkStep{
+		pos:  f.Pos(),
+		desc: fmt.Sprintf("%s %q of type %s", kind, f.Name(), shortTypeString(f.Type())),
+	}
+}
+
 // leakStep describes the safe type at the end of a leaking path.
 func leakStep(named *types.Named) walkStep {
 	return walkStep{
@@ -142,8 +154,6 @@ func leakStep(named *types.Named) walkStep {
 // When walk returns true, path receives the hops of the leaking path
 // ordered from the innermost (the safe type) to the outermost,
 // excluding the walked type itself.
-//
-//nolint:funlen,gocognit // Walk matches fmt complexity; extracting would harm readability.
 func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep) bool {
 	t = types.Unalias(t)
 	key := walkKey{t: t, st: st}
@@ -151,18 +161,8 @@ func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, fa
 		return false
 	}
 
-	// Safe-type terminal.
 	if named, ok := c.sensitiveNamed(t); ok {
-		// With fmt interfaces enabled the safe type is safe.
-		// Otherwise, if it implements any of them
-		// AND has no structural protection, its content leaks.
-		cls := c.classify(named)
-		leaks := st != stateClean &&
-			(cls.fmtFormatter || cls.fmtStringer || cls.fmtGoStringer) && !cls.structurallySafe
-		if leaks {
-			*path = append(*path, leakStep(named))
-		}
-		return leaks
+		return c.walkSafe(named, st, path)
 	}
 
 	visited[key] = true
@@ -170,46 +170,15 @@ func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, fa
 	switch u := t.(type) {
 	case *types.Pointer:
 		return c.walkPointer(t, u, st, visited, factorAt, path)
-
 	case *types.Struct:
-		for f := range u.Fields() {
-			fst := st
-			newFactor := factorAt
-			if !f.Exported() {
-				if fst == stateClean {
-					fst = stateNoMethods
-				}
-				if factorAt.kind == "" {
-					newFactor = &disableFactor{kind: factorUnexportedField, name: f.Name()}
-				}
-			}
-			if c.walk(f.Type(), fst, visited, newFactor, path) {
-				if newFactor != factorAt && factorAt.kind == "" {
-					*factorAt = *newFactor
-				}
-				kind := "field"
-				if !f.Exported() {
-					kind = "unexported field"
-				}
-				*path = append(*path, walkStep{
-					pos:  f.Pos(),
-					desc: fmt.Sprintf("%s %q of type %s", kind, f.Name(), shortTypeString(f.Type())),
-				})
-				return true
-			}
-		}
-		return false
-
+		return c.walkStruct(u, st, visited, factorAt, path)
 	case *types.Slice:
 		return c.walk(u.Elem(), st, visited, factorAt, path)
-
 	case *types.Array:
 		return u.Len() > 0 && c.walk(u.Elem(), st, visited, factorAt, path)
-
 	case *types.Map:
 		return c.walk(u.Key(), st, visited, factorAt, path) ||
 			c.walk(u.Elem(), st, visited, factorAt, path)
-
 	case *types.Interface:
 		// Flag only SecretExposer interfaces — those that have an ExposeSecret method,
 		// the convention used by github.com/powerman/sensitive.Secret[T] and
@@ -218,38 +187,79 @@ func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, fa
 		// the static analyzer cannot know what concrete type will be stored in them,
 		// and flagging them causes a torrent of false positives from external library
 		// internals (e.g. prometheus.Metric or error deep inside a metrics struct).
-		if c.isSecretExposer(u) {
-			return st != stateClean
-		}
-		return false
-
-	case *types.Chan, *types.Signature, *types.Basic:
-		return false // address/header/primitive
-
+		return c.isSecretExposer(u) && st != stateClean
 	case *types.Named:
-		// A defined pointer type has no methods,
-		// so fmt calls neither the methods of *T nor Format of the pointee through it.
-		if p, ok := u.Underlying().(*types.Pointer); ok {
-			return c.walkPointer(t, p, st, visited, factorAt, path)
-		}
-		// A named type with fmt.Formatter reached with fmt interfaces still enabled
-		// redacts under every verb, so it is a safe terminal (same trust as *types.Pointer).
-		// Where methods are off the method may not fire, so it must not be trusted there.
-		if st == stateClean && c.hasMethod(t, methodFormat) {
-			return false
-		}
-		if !c.walk(u.Underlying(), st, visited, factorAt, path) {
-			return false
-		}
-		// A SecretExposer interface is a terminal which has no step of its own,
-		// because the walk sees only the unnamed interface type.
-		if _, ok := u.Underlying().(*types.Interface); ok {
-			*path = append(*path, leakStep(u))
-		}
-		return true
+		return c.walkNamed(u, st, visited, factorAt, path)
 	default:
+		return false // Chan, Signature, Basic: address/header/primitive.
+	}
+}
+
+// walkSafe is walk for the safe type named, which is a terminal.
+// With fmt interfaces enabled the safe type is safe.
+// Otherwise, if it implements any of them
+// AND has no structural protection, its content leaks.
+func (c *checker) walkSafe(named *types.Named, st printState, path *[]walkStep) bool {
+	cls := c.classify(named)
+	leaks := st != stateClean &&
+		(cls.fmtFormatter || cls.fmtStringer || cls.fmtGoStringer) && !cls.structurallySafe
+	if leaks {
+		*path = append(*path, leakStep(named))
+	}
+	return leaks
+}
+
+// walkStruct is walk for the struct type u.
+func (c *checker) walkStruct(u *types.Struct, st printState,
+	visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep,
+) bool {
+	for f := range u.Fields() {
+		fst, factor := st, factorAt
+		if !f.Exported() {
+			if fst == stateClean {
+				fst = stateNoMethods
+			}
+			if factorAt.kind == "" {
+				factor = &disableFactor{kind: factorUnexportedField, name: f.Name()}
+			}
+		}
+		if !c.walk(f.Type(), fst, visited, factor, path) {
+			continue
+		}
+		// A new factor is published only when the walk leaks (see walkPointer).
+		if factor != factorAt {
+			*factorAt = *factor
+		}
+		*path = append(*path, fieldStep(f))
+		return true
+	}
+	return false
+}
+
+// walkNamed is walk for the named type u which is not a safe type.
+func (c *checker) walkNamed(u *types.Named, st printState,
+	visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep,
+) bool {
+	// A defined pointer type has no methods,
+	// so fmt calls neither the methods of *T nor Format of the pointee through it.
+	if p, ok := u.Underlying().(*types.Pointer); ok {
+		return c.walkPointer(u, p, st, visited, factorAt, path)
+	}
+	// A named type with fmt.Formatter reached with fmt interfaces still enabled
+	// redacts under every verb, so it is a safe terminal (same trust as *types.Pointer).
+	// Where methods are off the method may not fire, so it must not be trusted there.
+	if st == stateClean && c.hasMethod(u, methodFormat) {
 		return false
 	}
+	if !c.walk(u.Underlying(), st, visited, factorAt, path) {
+		return false
+	}
+	// A SecretExposer interface is a terminal which has no step of its own,
+	// because the walk sees only the unnamed interface type.
+	if _, ok := u.Underlying().(*types.Interface); ok {
+		*path = append(*path, leakStep(u))
+	}
+	return true
 }
 
 // walkPointer is walk for the pointer type p which fmt holds as holder:
