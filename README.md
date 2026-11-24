@@ -502,3 +502,7 @@ In short: leakhound is a static, sink-oriented blocklist
 lint-sensitive verifies the structural guarantee
 of self-redacting types on every path.
 Running both is reasonable.
+
+## AI usage
+
+lint-sensitive is developed with AI coding agents (Claude Code).
