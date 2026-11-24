@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-11-24
+
+### 🚀 Added
+
+- **(analyzer)** Add sensitivefmt analyzer for print verbs by @powerman in [4130f8d]
+- **⚠️ BREAKING!** Add golangci-lint module plugin and drop package-level state by @powerman in [add2702]
+
+### 🔔 Changed
+
+- **⚠️ BREAKING!** Make the sensitivefields declaration check opt-in by @powerman in [b967a85]
+
+### 📚 Documentation
+
+- **(readme)** Add golangci-lint plugin section by @powerman in [b6d0077]
+- Move architecture notes from code comments to ARCHITECTURE.md by @powerman in [892a7b2]
+
+[0.8.0]: https://github.com/powerman/lint-sensitive/compare/v0.7.0..v0.8.0
+[add2702]: https://github.com/powerman/lint-sensitive/commit/add2702b9914c4b70203be75e99bd37a90ab2325
+[892a7b2]: https://github.com/powerman/lint-sensitive/commit/892a7b28f59eac4c9e37965706229ef03a0fd6fa
+[4130f8d]: https://github.com/powerman/lint-sensitive/commit/4130f8d47ce51d505410dbe5385e333b575226af
+[b967a85]: https://github.com/powerman/lint-sensitive/commit/b967a85550ce6ebe4f61430552df609f179d4816
+[b6d0077]: https://github.com/powerman/lint-sensitive/commit/b6d0077457bb31c181b50c68855b1de75cb308d5
+
 ## [0.7.0] - 2026-11-24
 
 ### 🚀 Added
