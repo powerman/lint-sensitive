@@ -59,6 +59,15 @@ type arrayField struct {
 	xs [3]fakesensitive.String // want "is reachable through"
 }
 
+type notComparableField struct {
+	x fakesensitive.NotComparable // want "is reachable through"
+}
+
+// A zero-length array holds no value, so fmt prints only [].
+type zeroArrayField struct {
+	xs [0]fakesensitive.String
+}
+
 // Pointer variant — *fakesensitive.String is *<non-compound>.
 // Even under badVerb fmt never dereferences it — the address is printed.
 type pointerField struct {

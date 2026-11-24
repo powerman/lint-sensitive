@@ -55,3 +55,9 @@ type CheckNestedRef struct {
 type CheckArrayRef struct {
 	X fakesensitive.ArrayRef
 }
+
+// The zero-length array only makes the type not comparable and protects nothing,
+// and the type has no fmt.Formatter.
+type CheckNotComparable struct {
+	X fakesensitive.NotComparable // want "configured safe type fakesensitive.NotComparable does not guarantee format-level safety"
+}

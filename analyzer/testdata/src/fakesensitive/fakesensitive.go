@@ -124,6 +124,16 @@ type NestedRef struct{ v struct{ pp **string } }
 // It does NOT implement any fmt interface.
 type ArrayRef struct{ a [1]**string }
 
+// NotComparable has the shape of gophers.dev/pkgs/secrets.Text:
+// the zero-length array only makes it not comparable and protects nothing.
+type NotComparable struct {
+	_     [0]func()
+	value string
+}
+
+func (NotComparable) String() string   { return "[redacted]" }
+func (NotComparable) GoString() string { return "[redacted]" }
+
 // FormatFuncWrap holds its value behind a named func type and implements fmt.Formatter.
 type FormatFuncWrap struct{ fn FuncT }
 

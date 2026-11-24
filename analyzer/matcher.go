@@ -420,7 +420,7 @@ func typeElemHasCompoundTerm(elem types.Type) bool {
 // (when ALL of Formatter/Stringer/GoStringer are disabled)
 // still protects its content structurally:
 // it reaches at least one qualifier through fields,
-// array and slice elements, and map keys and values, but never through pointers.
+// non-empty array and slice elements, and map keys and values, but never through pointers.
 func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) bool {
 	t = types.Unalias(t)
 	if visited[t] {
@@ -439,7 +439,8 @@ func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) b
 			}
 		}
 	case *types.Array:
-		return m.isStructurallySafe(u.Elem(), visited)
+		// A zero-length array holds no value, e.g. the `_ [0]func()` not-comparable idiom.
+		return u.Len() > 0 && m.isStructurallySafe(u.Elem(), visited)
 	case *types.Slice:
 		return m.isStructurallySafe(u.Elem(), visited)
 	case *types.Map:
@@ -668,7 +669,7 @@ func (c *checker) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt
 		return c.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Array:
-		return c.walk(u.Elem(), fd, visited, factorAt, path)
+		return u.Len() > 0 && c.walk(u.Elem(), fd, visited, factorAt, path)
 
 	case *types.Map:
 		return c.walk(u.Key(), fd, visited, factorAt, path) ||

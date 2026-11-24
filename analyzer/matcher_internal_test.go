@@ -587,6 +587,43 @@ func TestIsStructurallySafe(t *testing.T) {
 			want: false,
 			plan: "struct{ m map[string]int } → false",
 		},
+		{
+			name: "zero_array_of_func",
+			typ:  structOf(types.NewArray(types.NewSignatureType(nil, nil, nil, nil, nil, false), 0)),
+			want: false,
+			plan: "struct{ a [0]func() } → zero-length array holds no value → false",
+		},
+		{
+			name: "zero_array_of_qualifier",
+			typ:  structOf(types.NewArray(ppInt, 0)),
+			want: false,
+			plan: "struct{ a [0]**int } → zero-length array holds no value → false",
+		},
+		{
+			name: "zero_array_of_named_func",
+			typ:  structOf(types.NewArray(namedFunc, 0)),
+			want: false,
+			plan: "struct{ a [0]Nf } → zero-length array holds no value → false",
+		},
+		{
+			name: "non_empty_array_of_zero_array",
+			typ:  structOf(types.NewArray(types.NewArray(ppInt, 0), 1)),
+			want: false,
+			plan: "struct{ a [1][0]**int } → inner zero-length array holds no value → false",
+		},
+		{
+			name: "not_comparable_idiom",
+			typ: types.NewStruct(
+				[]*types.Var{
+					types.NewField(token.NoPos, pkg, "_",
+						types.NewArray(types.NewSignatureType(nil, nil, nil, nil, nil, false), 0), false),
+					types.NewField(token.NoPos, pkg, "value", types.Typ[types.String], false),
+				},
+				nil,
+			),
+			want: false,
+			plan: "struct{ _ [0]func(); value string } (gophers.dev/go-conceal shape) → false",
+		},
 	}
 
 	for _, tt := range tests {
