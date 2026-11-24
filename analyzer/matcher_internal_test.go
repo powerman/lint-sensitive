@@ -764,6 +764,7 @@ func TestDebugFlag(t *testing.T) {
 		"json.Marshaler=",
 		"encoding.TextMarshaler=",
 		"structurallySafe=",
+		"opaque=",
 	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("debug output should contain %q, got:\n%s", want, output)
@@ -1065,6 +1066,41 @@ func TestNonSecretFields(t *testing.T) {
 			if gotSafe != tt.wantSafe || !slices.Equal(gotIgnored, tt.wantIgnored) {
 				t.Errorf("isStructurallySafeNamed() = %v, %v, want %v, %v",
 					gotSafe, gotIgnored, tt.wantSafe, tt.wantIgnored)
+			}
+		})
+	}
+}
+
+// TestIsOpaqueStruct covers the shapes encoding/json writes empty or not.
+func TestIsOpaqueStruct(t *testing.T) {
+	t.Parallel()
+
+	pkg := types.NewPackage("test", "test")
+	str := types.Typ[types.String]
+	field := func(name string, embedded bool) *types.Var {
+		return types.NewField(token.NoPos, pkg, name, str, embedded)
+	}
+	structOf := func(fields ...*types.Var) types.Type { return types.NewStruct(fields, nil) }
+
+	tests := []struct {
+		name string
+		typ  types.Type
+		want bool
+	}{
+		{"empty_struct", structOf(), true},
+		{"unexported", structOf(field("value", false)), true},
+		{"blank_and_unexported", structOf(field("_", false), field("value", false)), true},
+		{"exported", structOf(field("Value", false)), false},
+		{"exported_among_unexported", structOf(field("value", false), field("Value", false)), false},
+		{"embedded_unexported_type", structOf(field("embedded", true)), false},
+		{"named_string", str, false},
+		{"pointer", types.NewPointer(structOf()), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isOpaqueStruct(tt.typ); got != tt.want {
+				t.Errorf("isOpaqueStruct(%v) = %v, want %v", tt.typ, got, tt.want)
 			}
 		})
 	}

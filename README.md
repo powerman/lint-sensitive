@@ -314,15 +314,24 @@ as `go-conceal` expects, the methods of `*T` count too:
 
 The five surfaces and their acceptable safeguards:
 
-| Surface                    | Acceptable safeguards (any one)                                    |
-| -------------------------- | ------------------------------------------------------------------ |
-| JSON marshal               | `encoding.TextMarshaler` OR `json.Marshaler`                       |
-| Text marshal               | `encoding.TextMarshaler`                                           |
-| All fmt verbs              | `fmt.Formatter` OR structurally-protected type                     |
-| `%#v`                      | `fmt.GoStringer` OR `fmt.Formatter` OR structurally-protected type |
-| `%v`/`%s`/`%q`/`%x`¹/`%X`¹ | `fmt.Stringer` OR `fmt.Formatter` OR structurally-protected type   |
+| Surface                    | Acceptable safeguards (any one)                                     |
+| -------------------------- | ------------------------------------------------------------------- |
+| JSON marshal               | `encoding.TextMarshaler` OR `json.Marshaler` OR opaque struct       |
+| Text marshal               | `encoding.TextMarshaler` OR (opaque struct AND `%v`/`%s` safeguard) |
+| All fmt verbs              | `fmt.Formatter` OR structurally-protected type                      |
+| `%#v`                      | `fmt.GoStringer` OR `fmt.Formatter` OR structurally-protected type  |
+| `%v`/`%s`/`%q`/`%x`¹/`%X`¹ | `fmt.Stringer` OR `fmt.Formatter` OR structurally-protected type    |
 
 ¹ - Works on strings, but not on float types.
+
+An "opaque struct" is a struct whose fields are all unexported (blank `_` included)
+and none is embedded; a type which is not a struct is never opaque.
+`encoding/json`, `encoding/xml`, `gopkg.in/yaml.v3`, `github.com/BurntSushi/toml`
+and the `log/slog` JSONHandler write such a struct empty, whatever it holds.
+The `log/slog` TextHandler calls `encoding.TextMarshaler` and otherwise falls back to `%+v`,
+so for an opaque struct the text marshal rule also requires one of the `%v`/`%s` safeguards.
+Struct tags (`json:"-"`) are not considered:
+an exported field makes the struct not opaque.
 
 A "structurally-protected field" means one of:
 `**T`, `*interface{}`, `chan T`, `func() T`, `unsafe.Pointer`,
@@ -342,6 +351,9 @@ makes the whole type unprotected,
 because `fmt` prints that field as is.
 For a few known types the linter ignores fields known not to hold the secret.
 
+A method known to output the secret makes every surface it serves unsafe,
+whatever other safeguards the type has.
+
 ### Existing library support
 
 The table below shows which protection surfaces (`-sensitive.require-*`)
@@ -352,20 +364,20 @@ each type in the existing libraries provides (as of 2026-11-24).
 | `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓²         |
 | `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
 | `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
-| `andrewbenton/go-secrets.Secret[T]` | ✓    | ✗    | ✓   | ✓     | ✓         | ✓⁴         |
+| `andrewbenton/go-secrets.Secret[T]` | ✓    | ✓    | ✓   | ✓     | ✓         | ✓⁴         |
 | `go-playground/sensitive.String`    | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
 | `shoenig/go-conceal.Text`⁵          | ✗    | ✗    | ✗   | ✓     | ✓         | ✗          |
-| `shoenig/go-conceal.Bytes`⁵         | ✗    | ✗    | ✗   | ✓     | ✓         | ✗          |
+| `shoenig/go-conceal.Bytes`⁵         | ✓    | ✓    | ✗   | ✓     | ✓         | ✗          |
 | `negrel/secrecy.Secret[T]`          | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
-| `angusgmorrison/logfusc.Secret[T]`  | ✓    | ✗    | ✗   | ✓     | ✓         | ✗          |
-| `rbranson/camo.Secret[T]`           | ✗    | ✗    | ✓   | ✓     | ✓         | ✓⁶         |
+| `angusgmorrison/logfusc.Secret[T]`  | ✓    | ✓    | ✗   | ✓     | ✓         | ✗          |
+| `rbranson/camo.Secret[T]`           | ✓    | ✓    | ✓   | ✓     | ✓         | ✓⁶         |
 
 ¹ — via `encoding.TextMarshaler`.<br/>
 ² — `**T` — double pointer, `fmt` never dereferences it.<br/>
 ³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.<br/>
 ⁴ — `func() T` closures, `fmt` never dereferences.<br/>
 ⁵ — the library hands out `*Text` and `*Bytes`, so the methods are counted on the pointer;
-`(*Text).MarshalText` outputs the secret, so it is not counted.<br/>
+`(*Text).MarshalText` outputs the secret, so JSON and Text fail.<br/>
 ⁶ — `unsafe.Pointer`; the `hash` field is a fingerprint the linter knows to ignore.
 
 ### Flags

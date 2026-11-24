@@ -57,9 +57,11 @@ func init() { //nolint:gochecknoinits // Required for flag registration.
 	fs.BoolVar(&flagConfig.SkipGenerated, "skip-generated", false,
 		"Do not report diagnostics in generated files (Code generated ... DO NOT EDIT)")
 	fs.BoolVar(&flagConfig.RequireMarshalJSON, "require-marshal-json", false,
-		"Require all configured safe types to implement encoding.TextMarshaler or json.Marshaler")
+		"Require all configured safe types to implement encoding.TextMarshaler or json.Marshaler, "+
+			"or be opaque structs")
 	fs.BoolVar(&flagConfig.RequireMarshalText, "require-marshal-text", false,
-		"Require all configured safe types to implement encoding.TextMarshaler")
+		"Require all configured safe types to implement encoding.TextMarshaler, "+
+			"or be opaque String-level safe structs")
 	fs.BoolVar(&flagConfig.RequireFormat, "require-format", false,
 		"Require all configured safe types to implement fmt.Formatter or be structurally protected")
 	fs.BoolVar(&flagConfig.RequireGoString, "require-gostring", false,

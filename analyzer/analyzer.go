@@ -28,7 +28,7 @@ var defaultTypes = []string{ // Const.
 }
 
 // revealingMethods lists methods of known types which match a fmt/encoding interface
-// by signature but output the secret, so they do not count as protection.
+// by signature but output the secret, so they fail every surface they serve.
 // They apply to a matched type whether it comes from defaultTypes or not.
 var revealingMethods = map[string][]string{ // Const.
 	"github.com/shoenig/go-conceal.Text": {methodMarshalText},
@@ -68,11 +68,13 @@ type Config struct {
 	SkipGenerated bool
 
 	// RequireMarshalJSON, when true, emits diagnostics for safe types
-	// that do not implement encoding.TextMarshaler or json.Marshaler.
+	// that neither implement encoding.TextMarshaler or json.Marshaler
+	// nor are opaque structs (all fields unexported, none embedded).
 	RequireMarshalJSON bool
 
 	// RequireMarshalText, when true, emits diagnostics for safe types
-	// that do not implement encoding.TextMarshaler.
+	// that neither implement encoding.TextMarshaler
+	// nor are opaque structs which are String-level safe.
 	RequireMarshalText bool
 
 	// RequireFormat, when true, emits diagnostics for safe types

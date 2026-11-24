@@ -34,12 +34,13 @@ func levelCheck(c typeClass, viaPointer bool) requires {
 	goStringer := has(c.fmtGoStringer, methodGoString)
 	jsonMarshaler := has(c.jsonMarshaler, methodMarshalJSON)
 	textMarshaler := has(c.textMarshaler, methodMarshalText)
+	stringSafe := stringer || formatter || c.structurallySafe
 	return requires{
-		marshalJSONSafe: textMarshaler || jsonMarshaler,
-		marshalTextSafe: textMarshaler,
+		marshalJSONSafe: textMarshaler || jsonMarshaler || c.opaque,
+		marshalTextSafe: textMarshaler || c.opaque && stringSafe,
 		formatSafe:      formatter || c.structurallySafe,
 		goStringSafe:    goStringer || formatter || c.structurallySafe,
-		stringSafe:      stringer || formatter || c.structurallySafe,
+		stringSafe:      stringSafe,
 	}
 }
 
@@ -254,14 +255,20 @@ func (c *checker) emitLevelDiagnostics(
 	}
 
 	for _, d := range surfaces(demanded, satisfies) {
-		if !d.demand || d.satisfy {
+		// A revealing method fails the surface whatever other safeguards the type has.
+		revealing := revealingServing(cls.revealing, d.servedBy)
+		if !d.demand || d.satisfy && revealing == "" {
 			continue
 		}
-		msg := "configured safe type " + typeName + " does not guarantee " + d.msg
-		if !use.viaPointer {
-			msg += ptrOnlyHint(cls.ptrOnly, d.methods)
+		msg := "configured safe type " + typeName + " does not guarantee " + d.name
+		if revealing != "" {
+			msg += ": " + revealing + " outputs the secret"
+		} else {
+			msg += ": " + d.reason
+			if !use.viaPointer {
+				msg += ptrOnlyHint(cls.ptrOnly, d.methods)
+			}
 		}
-		msg += revealingHint(cls.revealing, d.methods)
 		key := levelReport{origin: named.Origin().Obj(), msg: msg}
 		if reported[key] {
 			continue
@@ -274,8 +281,9 @@ func (c *checker) emitLevelDiagnostics(
 // surface is one reliability requirement and whether the type satisfies it.
 type surface struct {
 	demand, satisfy bool
-	msg             string
+	name, reason    string
 	methods         []string // methods which would satisfy the surface
+	servedBy        []string // methods which may output the secret on the surface
 }
 
 // surfaces lists the reliability requirements in the order of their diagnostics.
@@ -283,35 +291,42 @@ func surfaces(demanded, satisfies requires) []surface {
 	return []surface{
 		{
 			demanded.marshalJSONSafe, satisfies.marshalJSONSafe,
-			"JSON marshal safety: " +
-				"the type neither implements encoding.TextMarshaler nor json.Marshaler",
+			"JSON marshal safety",
+			"the type neither implements encoding.TextMarshaler nor json.Marshaler, " +
+				"and is not an opaque struct",
+			[]string{methodMarshalJSON, methodMarshalText},
 			[]string{methodMarshalJSON, methodMarshalText},
 		},
 		{
 			demanded.marshalTextSafe, satisfies.marshalTextSafe,
-			"text marshal safety: " +
-				"the type does not implement encoding.TextMarshaler",
+			"text marshal safety",
+			"the type does not implement encoding.TextMarshaler, " +
+				"and is not an opaque String-level safe struct",
 			[]string{methodMarshalText},
+			// log/slog TextHandler falls back to %+v when there is no MarshalText.
+			[]string{methodMarshalText, methodString, methodFormat},
 		},
 		{
 			demanded.formatSafe, satisfies.formatSafe,
-			"format-level safety: " +
-				"the type does not implement fmt.Formatter " +
-				"and is not structurally protected",
+			"format-level safety",
+			"the type does not implement fmt.Formatter and is not structurally protected",
+			[]string{methodFormat},
 			[]string{methodFormat},
 		},
 		{
 			demanded.goStringSafe, satisfies.goStringSafe,
-			"GoString-level safety: " +
-				"the type does not implement fmt.GoStringer or fmt.Formatter, " +
+			"GoString-level safety",
+			"the type does not implement fmt.GoStringer or fmt.Formatter, " +
 				"and is not structurally protected",
+			[]string{methodFormat, methodGoString},
 			[]string{methodFormat, methodGoString},
 		},
 		{
 			demanded.stringSafe, satisfies.stringSafe,
-			"String-level safety: " +
-				"the type does not implement fmt.Stringer or fmt.Formatter, " +
+			"String-level safety",
+			"the type does not implement fmt.Stringer or fmt.Formatter, " +
 				"and is not structurally protected",
+			[]string{methodFormat, methodString},
 			[]string{methodFormat, methodString},
 		},
 	}
@@ -335,18 +350,14 @@ func ptrOnlyHint(ptrOnly map[string]bool, methods []string) string {
 		strings.Join(found, ", ") + ")"
 }
 
-// revealingHint explains why a type with a suitable method is still reported:
-// the method outputs the secret.
-// It returns an empty string when none of the methods is revealing.
-func revealingHint(revealing map[string]bool, methods []string) string {
+// revealingServing returns the names of the methods in servedBy
+// which are known to output the secret, joined by ", ".
+func revealingServing(revealing map[string]bool, servedBy []string) string {
 	var found []string
-	for _, name := range methods {
+	for _, name := range servedBy {
 		if revealing[name] {
 			found = append(found, name)
 		}
 	}
-	if len(found) == 0 {
-		return ""
-	}
-	return " (" + strings.Join(found, ", ") + " outputs the secret)"
+	return strings.Join(found, ", ")
 }

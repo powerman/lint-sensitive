@@ -52,6 +52,7 @@ type typeClass struct {
 	jsonMarshaler    bool // t implements json.Marshaler
 	textMarshaler    bool // t implements encoding.TextMarshaler
 	structurallySafe bool
+	opaque           bool // t is a struct whose fields are all unexported and not embedded
 
 	// ignoredFields holds names of the fields skipped by the structural check
 	// as known not to hold the secret (see nonSecretFields).
@@ -62,7 +63,9 @@ type typeClass struct {
 	ptrOnly map[string]bool
 
 	// revealing holds names of the methods which match an interface by signature
-	// but output the secret (see revealingMethods), so they are treated as absent.
+	// but output the secret (see revealingMethods).
+	// They are removed from the flags above and from ptrOnly,
+	// and they fail every surface they serve (see surfaces).
 	revealing map[string]bool
 }
 
@@ -342,6 +345,7 @@ func (c *checker) classify(t *types.Named) *typeClass {
 		jsonMarshaler: c.hasMethod(t, methodMarshalJSON),
 		textMarshaler: c.hasMethod(t, methodMarshalText),
 		ptrOnly:       c.ptrOnlyMethods(t),
+		opaque:        isOpaqueStruct(t.Underlying()),
 	}
 	tc.structurallySafe, tc.ignoredFields = c.isStructurallySafeNamed(t)
 	for _, name := range revealingMethods[qualifiedName(t)] {
@@ -518,6 +522,21 @@ func (m matcher) isStructurallySafeNamed(t *types.Named) (bool, []string) {
 	return safe && protected, ignored
 }
 
+// isOpaqueStruct reports whether reflection-based encoders such as encoding/json
+// write t empty: it is a struct whose fields are all unexported and none is embedded.
+func isOpaqueStruct(t types.Type) bool {
+	st, ok := t.(*types.Struct)
+	if !ok {
+		return false
+	}
+	for f := range st.Fields() {
+		if f.Exported() || f.Embedded() {
+			return false
+		}
+	}
+	return true
+}
+
 // ptrFmt reports whether *t has a fmt method,
 // i.e. whether fmt holding a *t can redact it when the path does not disable the method.
 func (c *typeClass) ptrFmt() bool {
@@ -528,10 +547,10 @@ func (c *typeClass) ptrFmt() bool {
 // debugClassify prints one classification line to stderr
 // unless the same line was already printed.
 func debugClassify(t *types.Named, tc *typeClass) {
-	line := fmt.Sprintf("sensitive type %s: Formatter=%v Stringer=%v GoStringer=%v json.Marshaler=%v encoding.TextMarshaler=%v structurallySafe=%v",
+	line := fmt.Sprintf("sensitive type %s: Formatter=%v Stringer=%v GoStringer=%v json.Marshaler=%v encoding.TextMarshaler=%v structurallySafe=%v opaque=%v",
 		t,
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
-		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe)
+		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe, tc.opaque)
 	if len(tc.ignoredFields) > 0 {
 		line += fmt.Sprintf(" nonSecretFields=%v", tc.ignoredFields)
 	}

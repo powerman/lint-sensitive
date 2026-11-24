@@ -148,6 +148,34 @@ type FormatFuncWrap struct{ fn FuncT }
 
 func (FormatFuncWrap) Format(f fmt.State, verb rune) { fmt.Fprint(f, "[redacted]") }
 
+// Opaque has only unexported fields and a value-receiver String,
+// so encoding/json writes it empty and log/slog prints "[redacted]".
+type Opaque struct{ value string }
+
+func (Opaque) String() string { return "[redacted]" }
+
+// OpaqueBare has only unexported fields and no methods:
+// encoding/json writes it empty, but log/slog TextHandler prints it with %+v.
+type OpaqueBare struct{ value string }
+
+type embedded struct{ Value string }
+
+// EmbedsExported embeds a struct with an exported field,
+// which encoding/json promotes and writes.
+type EmbedsExported struct{ embedded }
+
+// ExportedField has an exported field, which encoding/json writes.
+// It has a String method, so only the marshal surfaces fail.
+type ExportedField struct{ Value string }
+
+func (ExportedField) String() string { return "[redacted]" }
+
+// RevealingString is structurally protected,
+// but its String is known to output the secret (see export_test.go).
+type RevealingString struct{ pp **string }
+
+func (RevealingString) String() string { return "" }
+
 // NewPtrRecv returns a *PtrRecv.
 func NewPtrRecv() *PtrRecv { return new(PtrRecv) }
 

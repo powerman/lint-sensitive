@@ -6,8 +6,8 @@ import (
 	"fakesecrecy"
 )
 
-// Every configured safe type in this package fails TextMarshal safety
-// (none implements encoding.TextMarshaler).
+// A configured safe type fails text marshal safety
+// unless it implements encoding.TextMarshaler or is an opaque String-level safe struct.
 //
 // Fields are EXPORTED to avoid field-walk diagnostic.
 
@@ -15,12 +15,14 @@ type CheckString struct {
 	X fakesensitive.String // want "configured safe type fakesensitive.String does not guarantee text marshal safety"
 }
 
+// The fakes below are opaque structs which are String-level safe.
+
 type CheckSecret struct {
-	X fakesecrecy.Secret[string] // want "configured safe type fakesecrecy.Secret does not guarantee text marshal safety"
+	X fakesecrecy.Secret[string]
 }
 
 type CheckRef struct {
-	X fakesensitive.Ref[string] // want "configured safe type fakesensitive.Ref does not guarantee text marshal safety"
+	X fakesensitive.Ref[string]
 }
 
 // Wrong-signature decoys and pointer-receiver-only methods do not count.
@@ -33,8 +35,26 @@ type CheckPtrRecv struct {
 	X fakesensitive.PtrRecv // want "configured safe type fakesensitive.PtrRecv does not guarantee text marshal safety.*declared only on a pointer receiver.*: MarshalText\\)"
 }
 
-// fakecamo.Secret has no marshalers.
+// fakecamo.Secret has no marshalers, but it is an opaque struct and structurally protected.
 
 type CheckCamo struct {
-	X fakecamo.Secret[string] // want "configured safe type fakecamo.Secret does not guarantee text marshal safety"
+	X fakecamo.Secret[string]
+}
+
+// An opaque struct which is not String-level safe is written by log/slog TextHandler with %+v.
+
+type CheckOpaque struct {
+	X fakesensitive.Opaque
+}
+
+type CheckOpaqueBare struct {
+	X fakesensitive.OpaqueBare // want "configured safe type fakesensitive.OpaqueBare does not guarantee text marshal safety: .*not an opaque String-level safe struct"
+}
+
+type CheckEmbedsExported struct {
+	X fakesensitive.EmbedsExported // want "configured safe type fakesensitive.EmbedsExported does not guarantee text marshal safety: .*not an opaque String-level safe struct"
+}
+
+type CheckExportedField struct {
+	X fakesensitive.ExportedField // want "configured safe type fakesensitive.ExportedField does not guarantee text marshal safety: .*not an opaque String-level safe struct"
 }

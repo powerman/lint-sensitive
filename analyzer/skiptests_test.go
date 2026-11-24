@@ -54,7 +54,7 @@ func TestSkipReliability(t *testing.T) {
 			t.Parallel()
 
 			tc.cfg.Types = reliabilityTypes
-			tc.cfg.RequireMarshalJSON = true
+			tc.cfg.RequireFormat = true
 			runNew(t, tc.cfg, "sensitivefields", tc.pkg)
 		})
 	}
