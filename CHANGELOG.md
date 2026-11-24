@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-24
+
+### 🚀 Added
+
+- **(analyzer)** Add rsjethani/secret/v2.Text to default sensitive types by @powerman in [563ccb8]
+- Add -sensitive.public for fields which never hold the secret by @powerman in [96bd305]
+
+### 🔔 Changed
+
+- **(analyzer)** Check types used only via pointer by the pointer method set by @powerman in [345b2c4]
+- **(analyzer)** Ignore known secret-revealing methods by @powerman in [e84f92a]
+- **(analyzer)** Ignore known non-secret fields in the structural check by @powerman in [7d15c10]
+- **(analyzer)** Accept opaque structs for JSON and text marshal safety by @powerman in [0850afb]
+- **(analyzer)** Recognise rsjethani/secret/v3.Text by default by @powerman in [66e123c]
+- Recognise shoenig/go-conceal by default by @powerman in [7d5295d]
+- Recognise rbranson/camo by default by @powerman in [311bbe4]
+
+### 🐛 Fixed
+
+- **(analyzer)** Ignore zero-length arrays in structural checks by @powerman in [eaa9a41]
+- **(analyzer)** Judge a pointer to a safe type by the pointer's methods by @powerman in [2572f18]
+- **(analyzer)** Require every field to be structurally protected by @powerman in [aef533b]
+- **(analyzer)** Model fmt badVerb and defined pointer types in field walk by @powerman in [fd09fc8]
+- **(analyzer)** Check defined pointer types by the element type by @powerman in [a169d45]
+
+### 📚 Documentation
+
+- **(README)** Clarify pointer leak example and document `require-*` check by @powerman in [bd80510]
+- **(README)** Describe example as protected and unprotected values by @powerman in [654582d]
+- **(README)** Name rsjethani/secret/v2 in the support table by @powerman in [04d3dd5]
+- Describe optional safe-type interface check in README and package docs by @powerman in [c44bdf3]
+- Align README with current structural protection rules by @powerman in [70fcb9b]
+
+[0.7.0]: https://github.com/powerman/lint-sensitive/compare/v0.6.0..v0.7.0
+[c44bdf3]: https://github.com/powerman/lint-sensitive/commit/c44bdf3868d151a81c9e77b91d3a15aaf50db48f
+[bd80510]: https://github.com/powerman/lint-sensitive/commit/bd8051083dd464b60a03c1c81b2e07a4b9f31497
+[eaa9a41]: https://github.com/powerman/lint-sensitive/commit/eaa9a419023be1d3e3d32bc4c8c82e20f0b6d20a
+[563ccb8]: https://github.com/powerman/lint-sensitive/commit/563ccb8591f64d7d7782b2bba64b9dde27e7f33d
+[654582d]: https://github.com/powerman/lint-sensitive/commit/654582da97311a5fc9c032e47de674537a45a018
+[2572f18]: https://github.com/powerman/lint-sensitive/commit/2572f182e9d888d0e52a0d1d59d74892a2d994ac
+[345b2c4]: https://github.com/powerman/lint-sensitive/commit/345b2c4f90fc264883b17acc2f7e01f27b934856
+[e84f92a]: https://github.com/powerman/lint-sensitive/commit/e84f92af7b073483f295dd5c19124d54889de57f
+[7d5295d]: https://github.com/powerman/lint-sensitive/commit/7d5295d54bc18a0fd659afb73ad8624e4459d64b
+[aef533b]: https://github.com/powerman/lint-sensitive/commit/aef533b17ceb536369aa4bd246c2b472fce8848f
+[7d15c10]: https://github.com/powerman/lint-sensitive/commit/7d15c1085f784b068b432f42ab47d2bc7e8b60a0
+[311bbe4]: https://github.com/powerman/lint-sensitive/commit/311bbe4303880f92e0df5f083e062c14dd91ea66
+[0850afb]: https://github.com/powerman/lint-sensitive/commit/0850afbfbd9491a7c1641beefde9d273627f6028
+[96bd305]: https://github.com/powerman/lint-sensitive/commit/96bd305dd1d9ed5ea2a30c8b8a619543e0c865f8
+[70fcb9b]: https://github.com/powerman/lint-sensitive/commit/70fcb9b2a9698eed3da2fbd15453b850627175c8
+[fd09fc8]: https://github.com/powerman/lint-sensitive/commit/fd09fc8a09e3cba94e9b80456cfbf970ac8629b7
+[a169d45]: https://github.com/powerman/lint-sensitive/commit/a169d45f74800a61410e52c7069c3e2742ae6258
+[04d3dd5]: https://github.com/powerman/lint-sensitive/commit/04d3dd5f2788d4296926764b9eeaf1a7f75f475b
+[66e123c]: https://github.com/powerman/lint-sensitive/commit/66e123c3c97b3ef7da949a99ee22ca8d359d6ecd
+
 ## [0.6.0] - 2026-11-23
 
 ### 🔔 Changed
