@@ -115,6 +115,13 @@ fmt.Printf("%s", Session{Creds: &Credentials{Token: "s3cr3t"}})
 // {%!s(*main.Credentials=&{s3cr3t})} — LEAK
 ```
 
+A pointer directly to a safe type is different:
+`fmt` holds the pointer, so the safe type is judged by the methods of the pointer.
+On a clean path they fire, so `Secret *secrecy.Secret[string]` is not reported,
+and a verb they do not handle is a matter for
+[`-sensitive.require-format`](#optional-reliability-levels).
+An unexported `secret *secrecy.Secret[string]` is still reported.
+
 The linter flags every field on such a path, naming the factor that disables
 redaction so the fix is obvious:
 
@@ -142,7 +149,7 @@ println(s) // s3cr3t — Stringer/Formatter is never consulted
 
 ### Every supported library, both channels
 
-By default the linter recognises five sensitive-value libraries (see below).
+By default the linter recognises six sensitive-value libraries (see below).
 The [`example/`](example/) directory is a self-contained module with a runnable
 program that uses every one of them:
 unprotected values leak through `fmt` reflection or builtin `print`,
@@ -174,8 +181,9 @@ to surface places where the protection a developer **expects** silently does not
 
 - **Unconditional**: warn when a safe type's `Formatter`/`Stringer`/`GoStringer`
   protection is disabled by a path-disable factor
-  (unexported field or non-`Formatter` pointer),
-  the type implements at least one of these interfaces,
+  (unexported field or non-`Formatter` pointer to a holder),
+  the type (or a pointer to it, if the path leads to the pointer) implements
+  at least one of these interfaces,
   and the type has no structural protection to fall back on.
 - **Optional reliability levels**: a config-driven check that warns when a safe
   type does not provide enough protection for a configured attack surface.
@@ -203,7 +211,8 @@ lint-sensitive ./...
 By default, types from several sensitive-value libraries are recognized:
 `github.com/powerman/sensitive`, `github.com/go-playground/sensitive`,
 `github.com/negrel/secrecy.Secret`, `github.com/angusgmorrison/logfusc.Secret`,
-and `github.com/rsjethani/secret/v2.Text`.
+`github.com/rsjethani/secret/v2.Text`,
+and `github.com/shoenig/go-conceal.Text` and `.Bytes`.
 If you use other libraries or project-specific types, extend via the `-sensitive.types` flag:
 
 ```bash
@@ -294,6 +303,11 @@ When a flag is set, every safe type used in the analyzed package
 is checked against the corresponding attack surface.
 Safe types that do not meet the requirement are reported.
 
+A type is checked by its own methods if the package uses it as a value anywhere.
+If the package uses it only through a pointer (`*T`),
+as `go-conceal` expects, the methods of `*T` count too:
+`fmt` and `encoding/json` call them for a pointer.
+
 The five surfaces and their acceptable safeguards:
 
 | Surface                    | Acceptable safeguards (any one)                                     |
@@ -318,7 +332,7 @@ but never behind a pointer.
 ### Existing library support
 
 The table below shows which protection surfaces (`-sensitive.require-*`)
-each type in the existing libraries provides (as of 2026-07-04).
+each type in the existing libraries provides (as of 2026-11-24).
 
 | Safe type                           | JSON | Text | fmt | `%#v` | `%v`/`%s` | Structural |
 | ----------------------------------- | ---- | ---- | --- | ----- | --------- | ---------- |
@@ -327,13 +341,17 @@ each type in the existing libraries provides (as of 2026-07-04).
 | `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓³         |
 | `andrewbenton/go-secrets.Secret[T]` | ✓    | ✗    | ✓   | ✓     | ✓         | ✓⁴         |
 | `go-playground/sensitive.String`    | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
+| `shoenig/go-conceal.Text`⁵          | ✗    | ✗    | ✗   | ✓     | ✓         | ✗          |
+| `shoenig/go-conceal.Bytes`⁵         | ✗    | ✗    | ✗   | ✓     | ✓         | ✗          |
 | `negrel/secrecy.Secret[T]`          | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
 | `angusgmorrison/logfusc.Secret[T]`  | ✓    | ✗    | ✗   | ✓     | ✓         | ✗          |
 
 ¹ — via `encoding.TextMarshaler`.<br/>
 ² — `**T` — double pointer, `fmt` never dereferences it.<br/>
 ³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.<br/>
-⁴ — `func() T` closures, `fmt` never dereferences.
+⁴ — `func() T` closures, `fmt` never dereferences.<br/>
+⁵ — the library hands out `*Text` and `*Bytes`, so the methods are counted on the pointer;
+`(*Text).MarshalText` outputs the secret, so it is not counted.
 
 ### Flags
 
