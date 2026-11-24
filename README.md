@@ -17,8 +17,9 @@ in JSON, text marshaling and `fmt` output.
 
 ## What this linter is for
 
-A sensitive type (like `github.com/go-playground/sensitive.String`) exists to keep a
-secret out of your logs and error messages.
+A sensitive type
+(like [`github.com/go-playground/sensitive.String`](https://pkg.go.dev/github.com/go-playground/sensitive#String))
+exists to keep a secret out of your logs and error messages.
 Using one sets up an expectation:
 "if this value is ever printed, it shows `[REDACTED]`, not the secret."
 
@@ -95,19 +96,23 @@ for everything beneath it.
 
 Adding a non-`Formatter` pointer to a struct that holds a secret is the second
 disable factor.
-Under some verbs (e.g. `%#v`) `fmt` dereferences the pointer and reflects into
+Under a verb the pointer does not support (e.g. `%s` or `%q`)
+`fmt` dereferences the pointer and reflects into
 the fields with interface dispatch turned off:
 
 ```go
 import "github.com/go-playground/sensitive"
 
 type Credentials struct {
-    token sensitive.String
+    Token sensitive.String
 }
 
 type Session struct {
     Creds *Credentials // exported field, but the pointer can still defeat redaction
 }
+
+fmt.Printf("%s", Session{Creds: &Credentials{Token: "s3cr3t"}})
+// {%!s(*main.Credentials=&{s3cr3t})} — LEAK
 ```
 
 The linter flags every field on such a path, naming the factor that disables
@@ -258,10 +263,10 @@ analyzers := analyzer.New(analyzer.Config{
 
 Two analyzers are registered in the `lint-sensitive` binary:
 
-| Name              | Description                                                                                                  |
-| ----------------- | ------------------------------------------------------------------------------------------------------------ |
-| `sensitivefields` | Detects struct fields (exported AND unexported) where a safe type is reachable behind a path-disable factor. |
-| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                         |
+| Name              | Description                                                                                                                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sensitivefields` | Detects struct fields (exported AND unexported) where a safe type is reachable behind a path-disable factor. Also checks that safe types provide the interfaces required by the optional `-sensitive.require-*` flags. |
+| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                                                                                                                   |
 
 ## Optional reliability levels
 
