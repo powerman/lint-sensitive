@@ -171,10 +171,13 @@ It **assumes** those mechanisms exist to protect the secret
 and checks only that the access path does not disable them.
 
 It does **not** verify that a mechanism is actually wired to the secret.
-A type may implement `Format` and still print the secret through a buggy method;
-a type may embed a `**T` field that holds something other than the secret.
-Such misuse is out of scope — the linter treats the presence of the mechanism
+A type may implement `Format` and still print the secret through a buggy method.
+Such misuse is out of scope — the linter treats the presence of the interface
 as intent, because any other use of it would be pointless.
+
+Structural protection is judged differently:
+it counts only when every field of the type is protected,
+so an unrelated field (a callback, a counter, a cache) cannot fake it.
 
 Because of this, the two checks it performs both exist for one purpose —
 to surface places where the protection a developer **expects** silently does not hold:
@@ -310,13 +313,13 @@ as `go-conceal` expects, the methods of `*T` count too:
 
 The five surfaces and their acceptable safeguards:
 
-| Surface                    | Acceptable safeguards (any one)                                     |
-| -------------------------- | ------------------------------------------------------------------- |
-| JSON marshal               | `encoding.TextMarshaler` OR `json.Marshaler`                        |
-| Text marshal               | `encoding.TextMarshaler`                                            |
-| All fmt verbs              | `fmt.Formatter` OR structurally-protected field                     |
-| `%#v`                      | `fmt.GoStringer` OR `fmt.Formatter` OR structurally-protected field |
-| `%v`/`%s`/`%q`/`%x`¹/`%X`¹ | `fmt.Stringer` OR `fmt.Formatter` OR structurally-protected field   |
+| Surface                    | Acceptable safeguards (any one)                                    |
+| -------------------------- | ------------------------------------------------------------------ |
+| JSON marshal               | `encoding.TextMarshaler` OR `json.Marshaler`                       |
+| Text marshal               | `encoding.TextMarshaler`                                           |
+| All fmt verbs              | `fmt.Formatter` OR structurally-protected type                     |
+| `%#v`                      | `fmt.GoStringer` OR `fmt.Formatter` OR structurally-protected type |
+| `%v`/`%s`/`%q`/`%x`¹/`%X`¹ | `fmt.Stringer` OR `fmt.Formatter` OR structurally-protected type   |
 
 ¹ - Works on strings, but not on float types.
 
@@ -326,8 +329,16 @@ or `*<non-compound>` (`*string`, `*int`, `*bool`, etc.),
 including a named type with such an underlying type (`type F func() string`).
 These are the types that `fmt.Printf` never dereferences —
 it always prints an address or header, regardless of the verb.
-The field may also hold the type nested in an anonymous struct, array, slice or map,
-but never behind a pointer.
+
+A "structurally-protected type" is a struct whose every field is protected,
+with at least one structurally-protected field among them, possibly nested.
+Zero-size fields (`_ [0]func()`, `struct{}`) carry nothing and are ignored.
+A field is protected when it is a structurally-protected field,
+or a struct, a non-empty array, a slice or a map (both key and value)
+whose parts are all protected in turn, but never a pointer to them.
+A single unprotected field (`int`, `string`, `any`, a pointer to a struct, etc.)
+makes the whole type unprotected,
+because `fmt` prints that field as is.
 
 ### Existing library support
 

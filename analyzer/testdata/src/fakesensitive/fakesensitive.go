@@ -34,8 +34,8 @@ type ChanWrap[T any] struct {
 }
 
 // DoublePtrAndOther has a double-pointer field plus other fields.
-// The double-pointer field is assumed to hold the secret,
-// so the struct is safe even with non-pointer fields.
+// The other field can be printed as is,
+// so the struct is not structurally protected.
 type DoublePtrAndOther[T any] struct {
 	pp  **T
 	aux int
@@ -133,6 +133,15 @@ type NotComparable struct {
 
 func (NotComparable) String() string   { return "[redacted]" }
 func (NotComparable) GoString() string { return "[redacted]" }
+
+// Callback has a value-receiver String and a func field unrelated to the secret:
+// the func field does not make it structurally protected.
+type Callback struct {
+	value  string
+	onRead func()
+}
+
+func (Callback) String() string { return "[redacted]" }
 
 // FormatFuncWrap holds its value behind a named func type and implements fmt.Formatter.
 type FormatFuncWrap struct{ fn FuncT }

@@ -61,3 +61,13 @@ type CheckArrayRef struct {
 type CheckNotComparable struct {
 	X fakesensitive.NotComparable // want "configured safe type fakesensitive.NotComparable does not guarantee format-level safety"
 }
+
+// A qualifier next to an unrelated field does not make the type structurally protected.
+
+type CheckDoublePtrAndOther struct {
+	X fakesensitive.DoublePtrAndOther[string] // want "configured safe type fakesensitive.DoublePtrAndOther does not guarantee format-level safety"
+}
+
+type CheckCallback struct {
+	X fakesensitive.Callback // want "configured safe type fakesensitive.Callback does not guarantee format-level safety"
+}

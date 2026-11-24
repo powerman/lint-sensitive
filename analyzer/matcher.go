@@ -441,37 +441,52 @@ func typeElemHasCompoundTerm(elem types.Type) bool {
 	}
 }
 
-// isStructurallySafe reports whether the type
-// (when ALL of Formatter/Stringer/GoStringer are disabled)
-// still protects its content structurally:
-// it reaches at least one qualifier through fields,
-// non-empty array and slice elements, and map keys and values, but never through pointers.
+// isStructurallySafe reports whether fmt prints every value the type can carry
+// as an address or header, so that the type protects its content
+// even when ALL of Formatter/Stringer/GoStringer are disabled.
+// It must have at least one qualifier;
+// zero-size parts (`_ [0]func()`, struct{}) carry nothing and do not matter.
 func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) bool {
+	safe, protected := m.structural(t, visited)
+	return safe && protected
+}
+
+// structural reports whether every value t can carry is printed as an address or header (safe)
+// and whether t has at least one qualifier (protected).
+// A type seen again (a recursive type, or a type shared by sibling fields)
+// is neutral: its first visit already contributed to the result,
+// because the results of all parts are combined with AND (safe) and OR (protected).
+func (m matcher) structural(t types.Type, visited map[types.Type]bool) (safe, protected bool) {
 	t = types.Unalias(t)
 	if visited[t] {
-		return false
+		return true, false
 	}
 	visited[t] = true
 
 	if m.isQualifier(t) {
-		return true
+		return true, true
 	}
 	switch u := t.Underlying().(type) {
 	case *types.Struct:
+		safe = true
 		for f := range u.Fields() {
-			if m.isStructurallySafe(f.Type(), visited) {
-				return true
-			}
+			s, p := m.structural(f.Type(), visited)
+			safe, protected = safe && s, protected || p
 		}
+		return safe, protected
 	case *types.Array:
-		// A zero-length array holds no value, e.g. the `_ [0]func()` not-comparable idiom.
-		return u.Len() > 0 && m.isStructurallySafe(u.Elem(), visited)
+		if u.Len() == 0 {
+			return true, false
+		}
+		return m.structural(u.Elem(), visited)
 	case *types.Slice:
-		return m.isStructurallySafe(u.Elem(), visited)
+		return m.structural(u.Elem(), visited)
 	case *types.Map:
-		return m.isStructurallySafe(u.Key(), visited) || m.isStructurallySafe(u.Elem(), visited)
+		sk, pk := m.structural(u.Key(), visited)
+		sv, pv := m.structural(u.Elem(), visited)
+		return sk && sv, pk || pv
 	}
-	return false
+	return false, false
 }
 
 // ptrFmt reports whether *t has a fmt method,
@@ -562,17 +577,19 @@ func leakStep(named *types.Named) walkStep {
 //   - Unconditional: warn about weakening the base protection level of safe types.
 //     Detect places where Formatter/Stringer/GoStringer support
 //     is disabled for types that implement some of these interfaces
-//     and do not contain structurally-protected types.
+//     and are not structurally protected (see [matcher.isStructurallySafe]).
 //   - Optional reliability-level: warn about using safe types that
 //     do not provide the required level of protection for the configured attack surface.
 //
-// Even though a safe type having interface implementations
-// or structurally-protected types inside does not guarantee
+// Even though a safe type having interface implementations does not guarantee
 // that this functionality is used specifically for secret protection,
 // the linter assumes it is (any other approach is useless).
+// Structural protection is not assumed this way:
+// it counts only when every field of the type is protected,
+// so an unrelated field (a callback, a counter, a cache) cannot fake it.
 //
 // For safe types implementing ([fmt.Formatter] or [fmt.Stringer] or [fmt.GoStringer])
-// AND not containing one of the structurally-protected types inside:
+// AND not structurally protected:
 //   - The linter checks the path leading to these types
 //     for factors that disable support for these interfaces:
 //     1. unexported field
@@ -584,7 +601,7 @@ func leakStep(named *types.Named) walkStep {
 //     A pointer to a holder struct is a factor, as any non-Formatter pointer.
 //
 // Rationale:
-//   - If a safe type contains the secret in a structurally-protected type inside,
+//   - If a safe type is structurally protected,
 //     disabling Formatter/Stringer/GoStringer only blocks replacing
 //     the secret value with "REDACTED" or similar,
 //     while instead of the secret the address of the intermediate pointer will be printed.

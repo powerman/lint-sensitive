@@ -490,6 +490,21 @@ func TestIsStructurallySafe(t *testing.T) {
 		nil,
 	)
 
+	structOf2 := func(a, b types.Type) *types.Struct {
+		return types.NewStruct([]*types.Var{
+			types.NewField(token.NoPos, pkg, "a", a, false),
+			types.NewField(token.NoPos, pkg, "b", b, false),
+		}, nil)
+	}
+	funcT := types.NewSignatureType(nil, nil, nil, nil, nil, false)
+
+	// type N struct{ next []N; pp **int }
+	recSlice := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "N", nil), nil, nil)
+	recSlice.SetUnderlying(structOf2(types.NewSlice(recSlice), ppInt))
+	// type M struct{ next []M; s string }
+	recSliceUnprotected := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "M", nil), nil, nil)
+	recSliceUnprotected.SetUnderlying(structOf2(types.NewSlice(recSliceUnprotected), types.Typ[types.String]))
+
 	m := newMatcher(Config{NoDefaultTypes: true})
 	tests := []struct {
 		name string
@@ -563,14 +578,20 @@ func TestIsStructurallySafe(t *testing.T) {
 		{
 			name: "map_value_qualifier",
 			typ:  structOf(types.NewMap(types.Typ[types.String], ppInt)),
-			want: true,
-			plan: "struct{ m map[string]**int } → recurse into map value → true",
+			want: false,
+			plan: "struct{ m map[string]**int } → the key is printed as is → false",
 		},
 		{
 			name: "map_key_qualifier",
 			typ:  structOf(types.NewMap(ppInt, types.Typ[types.String])),
+			want: false,
+			plan: "struct{ m map[**int]string } → the value is printed as is → false",
+		},
+		{
+			name: "map_both_qualifiers",
+			typ:  structOf(types.NewMap(ppInt, types.NewPointer(types.NewPointer(types.Typ[types.Int])))),
 			want: true,
-			plan: "struct{ m map[**int]string } → recurse into map key → true",
+			plan: "struct{ m map[**int]**int } → both key and value are protected → true",
 		},
 		{
 			name: "named_func_field",
@@ -626,6 +647,63 @@ func TestIsStructurallySafe(t *testing.T) {
 			),
 			want: false,
 			plan: "struct{ _ [0]func(); value string } (gophers.dev/go-conceal shape) → false",
+		},
+		{
+			name: "qualifier_and_basic",
+			typ:  structOf2(ppInt, types.Typ[types.Int]),
+			want: false,
+			plan: "struct{ pp **int; aux int } → aux is printed as is → false",
+		},
+		{
+			name: "qualifier_and_func_callback",
+			typ:  structOf2(types.Typ[types.String], funcT),
+			want: false,
+			plan: "struct{ value string; onRead func() } (MySecret shape) → value is printed as is → false",
+		},
+		{
+			name: "zero_array_and_qualifier",
+			typ:  structOf2(types.NewArray(funcT, 0), ppInt),
+			want: true,
+			plan: "struct{ _ [0]func(); pp **int } (powerman/sensitive.Ref shape) → true",
+		},
+		{
+			name: "two_single_ptrs",
+			typ: structOf2(
+				types.NewPointer(types.Typ[types.String]),
+				types.NewPointer(types.Typ[types.String]),
+			),
+			want: true,
+			plan: "struct{ v *string; r *string } (rsjethani/secret shape) → true",
+		},
+		{
+			name: "empty_struct",
+			typ:  types.NewStruct(nil, nil),
+			want: false,
+			plan: "struct{} → nothing is protected → false",
+		},
+		{
+			name: "empty_struct_and_qualifier",
+			typ:  structOf2(types.NewStruct(nil, nil), ppInt),
+			want: true,
+			plan: "struct{ _ struct{}; pp **int } → empty struct is neutral → true",
+		},
+		{
+			name: "qualifier_and_interface",
+			typ:  structOf2(ppInt, types.NewInterfaceType(nil, nil).Complete()),
+			want: false,
+			plan: "struct{ pp **int; meta any } → interface may hold anything → false",
+		},
+		{
+			name: "recursive_via_slice",
+			typ:  recSlice,
+			want: true,
+			plan: "type N struct{ next []N; pp **int } → recursion is neutral → true",
+		},
+		{
+			name: "recursive_via_slice_unprotected",
+			typ:  recSliceUnprotected,
+			want: false,
+			plan: "type M struct{ next []M; s string } → s is printed as is → false",
 		},
 	}
 

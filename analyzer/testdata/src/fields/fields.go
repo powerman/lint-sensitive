@@ -186,10 +186,17 @@ type ChanWrapField struct {
 }
 
 // DoublePtrAndOtherField tests that a struct with a double-pointer field
-// AND other fields (int) is NOT flagged — the double-pointer field is
-// assumed to hold the secret.
+// AND other fields (int) is not structurally protected,
+// yet nothing is reported: it has no fmt protection to disable.
 type DoublePtrAndOtherField struct {
-	x fakesensitive.DoublePtrAndOther[string] // No diagnostic: has **T field.
+	x fakesensitive.DoublePtrAndOther[string] // No diagnostic: no fmt interfaces.
+}
+
+// CallbackField — Callback has a value-receiver String
+// but its func field does not make it structurally protected,
+// so the String method is the only protection and it is not guaranteed.
+type CallbackField struct {
+	x fakesensitive.Callback // want "is reachable through"
 }
 
 // HandlePrimitiveField — Handle[string] has *string which is *<non-compound>,
