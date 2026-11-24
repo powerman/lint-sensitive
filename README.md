@@ -144,8 +144,9 @@ println(s) // s3cr3t — Stringer/Formatter is never consulted
 
 By default the linter recognises five sensitive-value libraries (see below).
 The [`example/`](example/) directory is a self-contained module with a runnable
-program that leaks every one of them through both channels
-— `fmt` reflection and builtin `print` —
+program that uses every one of them:
+unprotected values leak through `fmt` reflection or builtin `print`,
+while structurally protected ones stay hidden and produce no findings,
 so you can watch the failures and the findings side by side:
 
 ```bash
