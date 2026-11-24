@@ -337,7 +337,7 @@ each type in the existing libraries provides (as of 2026-11-24).
 | ----------------------------------- | ---- | ---- | --- | ----- | --------- | ---------- |
 | `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
-| `rsjethani/secret.Text`             | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
+| `rsjethani/secret/v2.Text`          | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `andrewbenton/go-secrets.Secret[T]` | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `rbranson/camo.Secret[T]`           | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `go-playground/sensitive.String`    | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |
