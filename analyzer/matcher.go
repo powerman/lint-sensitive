@@ -334,7 +334,6 @@ func (c *checker) classify(t *types.Named) *typeClass {
 		ptrOnly:          c.ptrOnlyMethods(t),
 		structurallySafe: c.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)),
 	}
-
 	c.classes.Set(t, tc)
 
 	if c.debug {
@@ -449,6 +448,13 @@ func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) b
 	return false
 }
 
+// ptrFmt reports whether *t has a fmt method,
+// i.e. whether fmt holding a *t can redact it when the path does not disable the method.
+func (c *typeClass) ptrFmt() bool {
+	return c.fmtFormatter || c.fmtStringer || c.fmtGoStringer ||
+		c.ptrOnly[methodFormat] || c.ptrOnly[methodString] || c.ptrOnly[methodGoString]
+}
+
 // debugClassify prints one classification line to stderr
 // unless the same line was already printed.
 func debugClassify(t *types.Named, tc *typeClass) {
@@ -543,6 +549,10 @@ func leakStep(named *types.Named) walkStep {
 //     1. unexported field
 //     2. Pointer type not implementing Formatter (may be in an exported field too)
 //   - If such a factor is detected, it reports incorrect use of the safe type.
+//   - A pointer directly to a safe type is not a factor on its own:
+//     fmt holds *T, so it is judged by the method set of *T,
+//     and on a clean path the methods of *T fire.
+//     A pointer to a holder struct is a factor, as any non-Formatter pointer.
 //
 // Rationale:
 //   - If a safe type contains the secret in a structurally-protected type inside,
@@ -617,6 +627,11 @@ func (c *checker) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt
 		// *<non-compound> pointers always go to fmtPointer → address printed.
 		if !isCompoundKind(u.Elem()) {
 			return false
+		}
+		// A pointer directly to a safe type is judged by the method set of *T:
+		// that is the form fmt holds.
+		if named, ok := c.sensitiveNamed(u.Elem()); ok {
+			return c.walkPtrToSafe(u, named, fd, path)
 		}
 		// Non-Formatter pointer to compound (or reached under disable):
 		// badVerb is possible, and the pointee can be dereferenced.
@@ -710,4 +725,26 @@ func (c *checker) walk(t types.Type, fd bool, visited map[walkKey]bool, factorAt
 	default:
 		return false
 	}
+}
+
+// walkPtrToSafe handles a pointer p directly to the configured safe type named,
+// reached with fmt interfaces disabled or not.
+// On a clean path the methods of *T fire,
+// and the verbs which they do not handle are the concern of -require-format, as for a T value.
+// Otherwise the pointer leaks if *T has a fmt method which is disabled by the path
+// and T has no structural protection.
+// The path is extended like in [checker.walk].
+func (c *checker) walkPtrToSafe(p *types.Pointer, named *types.Named, fd bool, path *[]walkStep) bool { //nolint:revive // control flag by design
+	cls := c.classify(named)
+	if !fd || !cls.ptrFmt() || cls.structurallySafe {
+		return false
+	}
+	// The disable factor is already published by whatever disabled the path.
+	*path = append(*path, leakStep(named))
+	step := walkStep{desc: "pointer to " + shortTypeString(p.Elem()), pos: named.Obj().Pos()}
+	if !c.hasMethod(p, methodFormat) {
+		step.desc = "non-Formatter " + step.desc
+	}
+	*path = append(*path, step)
+	return true
 }

@@ -13,7 +13,7 @@ import (
 	"github.com/powerman/lint-sensitive/analyzer"
 )
 
-const testTypes = "fakesensitive,fakeplayground,fakelogfusc,fakesecrecy.Secret"
+const testTypes = "fakesensitive,fakeplayground,fakelogfusc,fakesecrecy.Secret,fakeconceal.Text,fakeconceal.Bytes"
 
 func TestMain(m *testing.M) {
 	err := analyzer.FlagAnalyzer.Flags.Set("types", testTypes)
@@ -82,6 +82,11 @@ func TestFieldsRelatedInformation(t *testing.T) {
 			"safe type fakesensitive.String",
 		},
 		"exposerField.e": {"safe type fields.exposer"},
+		// A pointer directly to a safe type is a hop too.
+		"ptrConcealUnexported.x": {
+			"non-Formatter pointer to fakeconceal.Text",
+			"safe type fakeconceal.Text",
+		},
 	}
 
 	results := analysistest.Run(t, analysistest.TestData(), analyzer.FieldsAnalyzer, "fields")

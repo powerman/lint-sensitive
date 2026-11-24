@@ -1,6 +1,7 @@
 package fields
 
 import (
+	"fakeconceal"
 	"fakelogfusc"
 	"fakeplayground"
 	"fakesecrecy"
@@ -403,4 +404,46 @@ func localLeakK() {
 		x fakesensitive.Handle[k] // want "is reachable through"
 	}
 	_ = s{}
+}
+
+// A pointer directly to a safe type is judged by the method set of *T:
+// on a clean path its methods fire, on an unexported path they are disabled.
+
+type PtrSecrecyExported struct {
+	X *fakesecrecy.Secret[string] // No diagnostic: *T's String fires on a clean path.
+}
+
+type ptrSecrecyUnexported struct {
+	x *fakesecrecy.Secret[string] // want "is reachable through"
+}
+
+type PtrConcealExported struct {
+	X *fakeconceal.Text // No diagnostic: *T's String fires on a clean path.
+}
+
+type ptrConcealUnexported struct {
+	x *fakeconceal.Text // want "is reachable through"
+}
+
+type PtrConcealBytesExported struct {
+	X *fakeconceal.Bytes // No diagnostic: *T's String fires on a clean path.
+}
+
+type ptrConcealBytesUnexported struct {
+	x *fakeconceal.Bytes // want "is reachable through"
+}
+
+// T itself has no fmt methods: there is no protection to disable,
+// -sensitive.require-* reports it.
+type valueConcealUnexported struct {
+	x fakeconceal.Text
+}
+
+// A pointer to a holder struct is still a disable factor.
+type PtrToHolderOfConceal struct {
+	H *holderOfConceal // want "is reachable through"
+}
+
+type holderOfConceal struct {
+	S *fakeconceal.Text
 }
