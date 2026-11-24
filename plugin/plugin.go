@@ -22,6 +22,7 @@ type Settings struct {
 	Types              []string `json:"types"`
 	Public             []string `json:"public"`
 	NoDefaultTypes     bool     `json:"no-default-types"`
+	DetectFields       bool     `json:"detect-fields"`
 	RequireMarshalJSON bool     `json:"require-marshal-json"`
 	RequireMarshalText bool     `json:"require-marshal-text"`
 	RequireFormat      bool     `json:"require-format"`
@@ -44,6 +45,7 @@ func New(settings any) (register.LinterPlugin, error) {
 		Types:              s.Types,
 		NoDefaultTypes:     s.NoDefaultTypes,
 		PublicFields:       s.Public,
+		DetectFields:       s.DetectFields,
 		RequireMarshalJSON: s.RequireMarshalJSON,
 		RequireMarshalText: s.RequireMarshalText,
 		RequireFormat:      s.RequireFormat,

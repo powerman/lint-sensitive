@@ -19,6 +19,7 @@ func TestNewMapsEverySetting(t *testing.T) {
 		"types":                "Types",
 		"public":               "PublicFields",
 		"no-default-types":     "NoDefaultTypes",
+		"detect-fields":        "DetectFields",
 		"require-marshal-json": "RequireMarshalJSON",
 		"require-marshal-text": "RequireMarshalText",
 		"require-format":       "RequireFormat",

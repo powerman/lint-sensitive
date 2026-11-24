@@ -15,8 +15,9 @@ import (
 // newFieldsAnalyzer creates a fields analyzer with the given dependencies and matcher provider.
 func newFieldsAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis.Analyzer {
 	return &analysis.Analyzer{
-		Name:     "sensitivefields",
-		Doc:      "detect struct fields through which fmt can print the content of a sensitive value",
+		Name: "sensitivefields",
+		Doc: "check the required reliability levels of safe types and, when enabled, " +
+			"detect struct fields through which fmt can print the content of a sensitive value",
 		Requires: requires,
 		Run: func(pass *analysis.Pass) (any, error) {
 			m, err := get(pass)
@@ -93,15 +94,13 @@ func (c *checker) checkField(pass *analysis.Pass, f *types.Var) {
 	}
 }
 
-// runFields is the shared core used by both flag-driven and New()-based fields analyzers.
-func runFields(pass *analysis.Pass, m matcher) (any, error) {
-	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-
-	c := newChecker(m)
-	formatterStructs := c.formatterStructs(pass, inspectResult)
-	shouldCheck := m.newShouldCheck(pass)
-
-	for st := range inspector.All[*ast.StructType](inspectResult) {
+// detectFields reports every field of the struct types declared in the analyzed package
+// through which fmt can print the content of a safe type.
+func (c *checker) detectFields(
+	pass *analysis.Pass, in *inspector.Inspector, shouldCheck func(token.Pos) bool,
+) {
+	formatterStructs := c.formatterStructs(pass, in)
+	for st := range inspector.All[*ast.StructType](in) {
 		if formatterStructs[st] {
 			continue
 		}
@@ -115,7 +114,18 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 			}
 		}
 	}
+}
 
+// runFields is the shared core used by both flag-driven and New()-based fields analyzers.
+func runFields(pass *analysis.Pass, m matcher) (any, error) {
+	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+
+	c := newChecker(m)
+	shouldCheck := m.newShouldCheck(pass)
+
+	if m.detectFields {
+		c.detectFields(pass, inspectResult, shouldCheck)
+	}
 	c.runReliabilityLevels(pass, shouldCheck)
 
 	//nolint:nilnil // Returning nil, nil is standard for go/analysis analyzers.

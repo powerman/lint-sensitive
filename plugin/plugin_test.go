@@ -30,6 +30,7 @@ func TestPlugin(t *testing.T) {
 
 	p := newPlugin(t, map[string]any{
 		"types":            []any{"fakeplugin.Secret"},
+		"detect-fields":    true,
 		"require-gostring": true,
 	})
 	if got, want := p.GetLoadMode(), register.LoadModeTypesInfo; got != want {
@@ -48,7 +49,7 @@ func TestPlugin(t *testing.T) {
 		t.Fatalf("analyzers = %v, want %v", names, want)
 	}
 
-	// The settings reach the analyzer: the diagnostic in plugintest needs both of them.
+	// The settings reach the analyzer: the diagnostics in plugintest need all of them.
 	i := slices.IndexFunc(analyzers, func(a *analysis.Analyzer) bool { return a.Name == "sensitivefields" })
 	analysistest.Run(t, analysistest.TestData(), analyzers[i], "plugintest")
 }

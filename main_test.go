@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -29,13 +30,62 @@ func TestFlagsExposeSensitiveTypes(t *testing.T) {
 func TestExampleEndToEnd(t *testing.T) {
 	t.Parallel()
 
+	// sensitivefields reports 7 diagnostics, but only with -sensitive.detect-fields:
+	//   - 5 sensitive fields in leakDemo (unexported field leak)
+	//   - 1 in innerStruct (reached via exported pointer dereference)
+	//   - 1 for the exported pointer itself (non-Formatter pointer to compound)
+	fieldChecks := []diagCheck{
+		{fragment: `sensitive field "playground"`, want: 1},
+		{fragment: `sensitive field "secrecy"`, want: 1},
+		{fragment: `sensitive field "logfusc"`, want: 1},
+		{fragment: `sensitive field "conceal"`, want: 1},
+		{fragment: `sensitive field "secret"`, want: 2},
+		{fragment: `sensitive field "P"`, want: 1},
+	}
+	// The rest is reported by default.
+	checks := []diagCheck{
+		// sensitiveprint: 4 diagnostics (2 print + 2 println).
+		// Use trailing space to distinguish "print " from "println".
+		{fragment: `sensitive value passed to builtin print `, want: 2},
+		{fragment: `sensitive value passed to builtin println`, want: 2},
+		// sensitivefmt: 1 diagnostic (the fmt.Println of leakDemo).
+		{fragment: `sensitive value of type main.leakDemo printed with %v exposes`, want: 1},
+	}
+
+	t.Run("default", func(t *testing.T) {
+		t.Parallel()
+		runExample(t, checks, fieldWants(fieldChecks, 0))
+	})
+	t.Run("detect-fields", func(t *testing.T) {
+		t.Parallel()
+		runExample(t, append(slices.Clone(checks), fieldChecks...), nil, "-sensitive.detect-fields")
+	})
+}
+
+type diagCheck struct {
+	fragment string
+	want     int
+}
+
+// fieldWants returns checks with the given want for every fragment of the field checks.
+func fieldWants(checks []diagCheck, want int) []diagCheck {
+	res := slices.Clone(checks)
+	for i := range res {
+		res[i].want = want
+	}
+	return res
+}
+
+// runExample runs the binary on example/ with the extra flags
+// and verifies the count of every check, and that no other diagnostics are reported.
+func runExample(t *testing.T, checks, absent []diagCheck, flags ...string) {
+	t.Helper()
+
 	binary := buildBinary(t)
 	exampleDir := filepath.Join(repoRoot(t), "example")
 
-	cmd := exec.CommandContext(t.Context(), binary,
-		"-sensitive.types=github.com/powerman/lint-sensitive/example.Secret",
-		".",
-	)
+	args := append([]string{"-sensitive.types=github.com/powerman/lint-sensitive/example.Secret"}, flags...)
+	cmd := exec.CommandContext(t.Context(), binary, append(args, ".")...)
 	cmd.Dir = exampleDir
 	cmd.Env = os.Environ()
 	out, err := cmd.CombinedOutput()
@@ -53,28 +103,7 @@ func TestExampleEndToEnd(t *testing.T) {
 
 	// Check total diagnostic count and each unique type's count.
 	// This avoids the "presence not count" bug from duplicated Contains checks.
-	type diagCheck struct {
-		fragment string
-		want     int
-	}
-	checks := []diagCheck{
-		// sensitivefields: 7 diagnostics:
-		//   - 5 sensitive fields in leakDemo (unexported field leak)
-		//   - 1 in innerStruct (reached via exported pointer dereference)
-		//   - 1 for the exported pointer itself (non-Formatter pointer to compound)
-		{fragment: `sensitive field "playground"`, want: 1},
-		{fragment: `sensitive field "secrecy"`, want: 1},
-		{fragment: `sensitive field "logfusc"`, want: 1},
-		{fragment: `sensitive field "conceal"`, want: 1},
-		{fragment: `sensitive field "secret"`, want: 2},
-		{fragment: `sensitive field "P"`, want: 1},
-		// sensitiveprint: 4 diagnostics (2 print + 2 println).
-		// Use trailing space to distinguish "print " from "println".
-		{fragment: `sensitive value passed to builtin print `, want: 2},
-		{fragment: `sensitive value passed to builtin println`, want: 2},
-		// sensitivefmt: 1 diagnostic (the fmt.Println of leakDemo).
-		{fragment: `sensitive value of type main.leakDemo printed with %v exposes`, want: 1},
-	}
+	checks = append(checks, absent...)
 	totalWant := 0
 	for _, c := range checks {
 		totalWant += c.want

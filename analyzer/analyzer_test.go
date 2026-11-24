@@ -19,7 +19,7 @@ const testTypes = "fakesensitive,fakeplayground,fakelogfusc,fakesecrecy.Secret,f
 const fmtTypes = "fakesensitive.String,fakeconceal.Text,fakestringer"
 
 // flagAnalyzer returns the analyzer with the given name from a fresh analyzer.NewFlagAnalyzers()
-// whose -sensitive.types flag is set to testTypes.
+// whose -sensitive.types flag is set to testTypes and -sensitive.detect-fields is enabled.
 func flagAnalyzer(t *testing.T, name string) *analysis.Analyzer {
 	t.Helper()
 
@@ -31,9 +31,11 @@ func flagAnalyzerTypes(t *testing.T, name, types string) *analysis.Analyzer {
 	t.Helper()
 
 	analyzers := analyzer.NewFlagAnalyzers()
-	err := analyzers[0].Flags.Set("types", types)
-	if err != nil {
-		t.Fatalf("set -types flag: %v", err)
+	for flag, value := range map[string]string{"types": types, "detect-fields": "true"} {
+		err := analyzers[0].Flags.Set(flag, value)
+		if err != nil {
+			t.Fatalf("set -%s flag: %v", flag, err)
+		}
 	}
 	i := slices.IndexFunc(analyzers, func(a *analysis.Analyzer) bool { return a.Name == name })
 	if i < 0 {
@@ -66,7 +68,7 @@ func runNew(t *testing.T, cfg analyzer.Config, name, pkg string) {
 
 func TestNewFieldsAnalyzer(t *testing.T) {
 	t.Parallel()
-	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ",")}, "sensitivefields", "fields")
+	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ","), DetectFields: true}, "sensitivefields", "fields")
 }
 
 func TestNewPrintAnalyzer(t *testing.T) {
@@ -158,6 +160,7 @@ func TestPublicFieldsConfig(t *testing.T) {
 
 	cfg := analyzer.Config{
 		Types:              reliabilityTypes,
+		DetectFields:       true,
 		RequireMarshalJSON: true,
 		RequireMarshalText: true,
 	}
@@ -196,4 +199,14 @@ func TestFormatAnalyzer(t *testing.T) {
 func TestNewFormatAnalyzer(t *testing.T) {
 	t.Parallel()
 	runNew(t, analyzer.Config{Types: strings.Split(fmtTypes, ",")}, "sensitivefmt", "fmtcall")
+}
+
+// TestDetectFieldsOff verifies that without DetectFields the fields analyzer
+// reports no declaration diagnostics, but still reports the Require* levels.
+func TestDetectFieldsOff(t *testing.T) {
+	t.Parallel()
+
+	runNew(t, analyzer.Config{Types: reliabilityTypes}, "sensitivefields", "fields_off")
+	runNew(t, analyzer.Config{Types: reliabilityTypes, RequireMarshalJSON: true},
+		"sensitivefields", "fields_off_require")
 }

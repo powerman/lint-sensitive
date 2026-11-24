@@ -16,7 +16,7 @@ User-facing behaviour (flags, supported libraries, how to fix a finding) is in t
 | `analyzer/methods.go`    | Method-set queries: does a type have `Format`, `String`, `GoString`, `Marshal*`.         |
 | `analyzer/classify.go`   | `typeClass`: what protects one safe type; structural and opaque checks.                  |
 | `analyzer/walk.go`       | The walk: does `fmt` reach the content of a safe type from a given field.                |
-| `analyzer/fields.go`     | The `sensitivefields` analyzer: runs the walk for every struct field.                    |
+| `analyzer/fields.go`     | The `sensitivefields` analyzer: runs the walk for every struct field (opt-in).           |
 | `analyzer/levelcheck.go` | The optional reliability levels (`-sensitive.require-*`), part of `sensitivefields`.     |
 | `analyzer/print.go`      | The `sensitiveprint` analyzer: builtin `print`/`println`.                                |
 | `analyzer/format.go`     | The `sensitivefmt` analyzer: finds print calls and the verb of each argument.            |
@@ -263,6 +263,10 @@ lives in an external package.
   A process-wide cache would keep the types of every pass alive in long-running drivers
   (`gopls`, golangci-lint daemons),
   and a string key cannot tell apart local types of different functions which share a name.
+- The declaration check of `sensitivefields` (the walk for every struct field) is off by default:
+  it reports latent paths which nothing prints, and golangci-lint does not accept detectors.
+  `-sensitive.detect-fields` (`Config.DetectFields`) turns it on;
+  the `-sensitive.require-*` levels do not depend on it.
 - With `-sensitive.debug` the classification of each safe type is printed to stderr once.
   The key is the whole line, which includes the type arguments,
   so instances of one generic type with different classification are all printed,

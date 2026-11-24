@@ -30,6 +30,7 @@ func TestFlagsReachMatcher(t *testing.T) {
 		{"skip-tests", "true", func(m matcher) bool { return m.skipTests }},
 		{"skip-generated", "true", func(m matcher) bool { return m.skipGenerated }},
 		{"debug", "true", func(m matcher) bool { return m.debug }},
+		{"detect-fields", "true", func(m matcher) bool { return m.detectFields }},
 		{"require-marshal-json", "true", func(m matcher) bool { return m.requireMarshalJSON }},
 		{"require-marshal-text", "true", func(m matcher) bool { return m.requireMarshalText }},
 		{"require-format", "true", func(m matcher) bool { return m.requireFormat }},

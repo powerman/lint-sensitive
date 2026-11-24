@@ -75,6 +75,13 @@ type Config struct {
 	// (those containing the standard "// Code generated ... DO NOT EDIT." header).
 	SkipGenerated bool
 
+	// DetectFields, when true, makes the fields analyzer report struct fields
+	// where an unexported field or a non-Formatter pointer on the path
+	// would let fmt print a safe type's secret with some verb,
+	// even if no such print exists.
+	// It does not affect the Require* levels.
+	DetectFields bool
+
 	// RequireMarshalJSON, when true, emits diagnostics for safe types
 	// that neither implement encoding.TextMarshaler or json.Marshaler
 	// nor are opaque structs (all fields unexported, none embedded).

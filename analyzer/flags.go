@@ -15,7 +15,8 @@ import (
 // sensitive, sensitivefields, sensitiveprint and sensitivefmt.
 // The first one registers the -sensitive.* flags
 // and passes the resulting configuration to the others via Requires.
-// The -sensitive.require-* and -sensitive.debug flags affect only sensitivefields.
+// The -sensitive.detect-fields, -sensitive.require-* and -sensitive.debug flags
+// affect only sensitivefields.
 // Each call returns an independent set.
 func NewFlagAnalyzers() []*analysis.Analyzer {
 	var (
@@ -73,6 +74,9 @@ func registerFlags(fs *flag.FlagSet, cfg *Config, types, public *string) {
 		"Do not report diagnostics in _test.go files")
 	fs.BoolVar(&cfg.SkipGenerated, "skip-generated", false,
 		"Do not report diagnostics in generated files (Code generated ... DO NOT EDIT)")
+	fs.BoolVar(&cfg.DetectFields, "detect-fields", false,
+		"Report struct fields through which fmt could print a safe type's secret "+
+			"even if no such print exists (sensitivefields only)")
 	fs.BoolVar(&cfg.RequireMarshalJSON, "require-marshal-json", false,
 		"Require all configured safe types to implement encoding.TextMarshaler or json.Marshaler, "+
 			"or be opaque structs")

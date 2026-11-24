@@ -18,7 +18,7 @@ func TestSkipTests(t *testing.T) {
 
 	// skiptests package has a regular file (pkg.go) that should be flagged,
 	// and a _test.go file (pkg_test.go) whose diagnostic is suppressed.
-	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ","), SkipTests: true},
+	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ","), SkipTests: true, DetectFields: true},
 		"sensitivefields", "skiptests")
 }
 
@@ -30,7 +30,7 @@ func TestSkipGenerated(t *testing.T) {
 
 	// skipgen package has a regular file (pkg.go) that should be flagged,
 	// and a generated file (pkg_generated.go) whose diagnostic is suppressed.
-	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ","), SkipGenerated: true},
+	runNew(t, analyzer.Config{Types: strings.Split(testTypes, ","), SkipGenerated: true, DetectFields: true},
 		"sensitivefields", "skipgen")
 }
 

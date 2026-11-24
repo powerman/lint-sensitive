@@ -113,8 +113,17 @@ fmt.Printf("%s", Session{Creds: &Credentials{Token: "s3cr3t"}})
 // {%!s(*main.Credentials=&{s3cr3t})} — LEAK
 ```
 
-The linter flags every field on such a path, naming the factor that disables
-redaction so the fix is obvious:
+The linter reports the `fmt` call which prints such a value,
+naming the factor that disables redaction so the fix is obvious
+(see the [`sensitivefmt`](#analyzers) analyzer):
+
+```text
+server.go:9:14: sensitive value of type main.Server printed with %v exposes
+                the secret of safe type sensitive.String through an unexported field "cfg"
+```
+
+With [`-sensitive.detect-fields`](#detecting-fields-which-can-leak)
+it also reports every field on such a path, even when nothing prints it:
 
 ```text
 server.go:2:  sensitive field "cfg" is reachable through an unexported field "cfg";
@@ -166,12 +175,15 @@ A type may implement `Format` and still print the secret through a buggy method.
 Such misuse is out of scope — the linter treats the presence of the interface
 as intent, because any other use of it would be pointless.
 
-Both of its checks surface places where the protection a developer **expects**
+Its checks surface places where the protection a developer **expects**
 silently does not hold:
 
-- **Unconditional**: warn when an unexported field or a pointer on the path
-  disables the safe type's `Formatter`/`Stringer`/`GoStringer`
+- **Print calls**: warn when a `fmt`-like call prints a value
+  whose path to a safe type disables the type's `Formatter`/`Stringer`/`GoStringer`
   and the type has no structural protection to fall back on.
+- **Struct fields** (opt-in): warn about such a path at the declaration,
+  even when nothing prints the value
+  (see [Detecting fields which can leak](#detecting-fields-which-can-leak)).
 - **Optional reliability levels**: warn when a safe type does not protect the secret
   on the surfaces (JSON, `fmt` verbs, …) the project requires
   (see [Optional reliability levels](#optional-reliability-levels)).
@@ -273,11 +285,11 @@ analyzers := analyzer.New(analyzer.Config{
 
 Three analyzers are registered in the `lint-sensitive` binary:
 
-| Name              | Description                                                                                                                                                                                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `sensitivefmt`    | Detects calls of print functions (`fmt.*`, `log.*`, `testing.T.*` and their wrappers) which print the content of a sensitive value, with the verb the format string gives to the argument.                                                      |
-| `sensitivefields` | Detects struct fields (exported AND unexported) where an unexported field or a pointer on the path disables redaction of a safe type. Also checks that safe types provide the interfaces required by the optional `-sensitive.require-*` flags. |
-| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                                                                                                                                            |
+| Name              | Description                                                                                                                                                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `sensitivefmt`    | Detects calls of print functions (`fmt.*`, `log.*`, `testing.T.*` and their wrappers) which print the content of a sensitive value, with the verb the format string gives to the argument.                                                                                           |
+| `sensitivefields` | Checks that safe types provide the interfaces required by the optional `-sensitive.require-*` flags. With `-sensitive.detect-fields` also detects struct fields (exported AND unexported) where an unexported field or a pointer on the path could disable redaction of a safe type. |
+| `sensitiveprint`  | Detects calls to builtin `print`/`println` whose arguments contain sensitive values.                                                                                                                                                                                                 |
 
 ### Limitations of `sensitivefmt`
 
@@ -287,20 +299,38 @@ It reports what the program prints, so it checks only what it can see in the cal
 - a format string which is not a constant is not checked;
 - arguments forwarded as `args...` are not checked;
 - structured loggers without a format string (`log/slog`, zap or logrus fields) are not checked:
-  they format with `%v`/`%+v`, which `sensitivefields` covers.
+  they format with `%v`/`%+v`, which `-sensitive.detect-fields` covers
+  (see [Detecting fields which can leak](#detecting-fields-which-can-leak)).
+
+## Detecting fields which can leak
+
+By default the linter reports only what the program prints:
+a `fmt`-like call or a builtin `print` which exposes a safe type's secret.
+`-sensitive.detect-fields` also reports every struct field
+whose path to a safe type could leak with some verb,
+even when no such print exists:
+
+```bash
+lint-sensitive -sensitive.detect-fields ./...
+```
+
+It is off by default because it is a detector rather than a linter:
+a field may never be printed, and then the report is noise.
+Turn it on for what the call-site analysis cannot see:
+arguments of an interface type, non-constant format strings, `args...` forwarding,
+structured loggers (`log/slog`, zap or logrus fields) which format with `%v`/`%+v`,
+and library types which their users will print.
+
+The setting is `detect-fields` in the golangci-lint plugin, `Config.DetectFields` in the library.
 
 ## Optional reliability levels
 
-By default the linter only checks the **unconditional** condition:
-a safe type must not leak content when its Formatter/Stringer/GoStringer
-interface is disabled by an unexported field or a pointer on the path.
-
-The unconditional check only guards against _weakening_ whatever protection a
-type already has; it says nothing about whether that protection is enough.
+The call-site checks only guard against _weakening_ whatever protection a
+type already has; they say nothing about whether that protection is enough.
 Consider a safe type that implements only `GoStringer`:
 it redacts under `%#v`, but a plain `%v`/`%s` prints the secret,
 and an `encoding/json` marshal writes it straight into the output.
-The unconditional check stays silent — nothing is being _disabled_ —
+The call-site checks stay silent — nothing is being _disabled_ —
 even though the secret leaks on the very first log line or API response.
 
 **Recommended: make your expectations explicit.**

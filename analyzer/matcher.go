@@ -32,6 +32,8 @@ type matcher struct {
 	// err is the first error found in Config, reported by every analyzer run.
 	err error
 
+	detectFields bool
+
 	requireMarshalJSON bool
 	requireMarshalText bool
 	requireFormat      bool
@@ -64,6 +66,8 @@ func newMatcher(cfg Config) matcher {
 		debug:         cfg.Debug,
 		debugPrinted:  new(sync.Map),
 		public:        make(map[string][]string, len(publicFields)+len(cfg.PublicFields)),
+
+		detectFields: cfg.DetectFields,
 
 		requireMarshalJSON: cfg.RequireMarshalJSON,
 		requireMarshalText: cfg.RequireMarshalText,
