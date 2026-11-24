@@ -33,6 +33,7 @@ var (
 		{Pkg: "github.com/negrel/secrecy", Name: "Secret"},
 		{Pkg: "github.com/angusgmorrison/logfusc", Name: "Secret"},
 		{Pkg: "github.com/rsjethani/secret/v2", Name: "Text"},
+		{Pkg: "github.com/rsjethani/secret/v3", Name: "Text"},
 		{Pkg: "github.com/shoenig/go-conceal", Name: "Text"},
 		{Pkg: "github.com/shoenig/go-conceal", Name: "Bytes"},
 		{Pkg: "github.com/rbranson/camo", Name: "Secret"},

@@ -197,7 +197,7 @@ lint-sensitive ./...
 By default, types from several sensitive-value libraries are recognized:
 `github.com/powerman/sensitive`, `github.com/go-playground/sensitive`,
 `github.com/negrel/secrecy.Secret`, `github.com/angusgmorrison/logfusc.Secret`,
-`github.com/rsjethani/secret/v2.Text`,
+`github.com/rsjethani/secret/v2.Text` and `/v3.Text`,
 `github.com/shoenig/go-conceal.Text` and `.Bytes`,
 and `github.com/rbranson/camo.Secret`.
 If you use other libraries or project-specific types, extend via the `-sensitive.types` flag:
@@ -338,6 +338,7 @@ each type in the existing libraries provides (as of 2026-11-24).
 | `powerman/sensitive.Ref[T]`         | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `powerman/sensitive.Handle[T]`      | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `rsjethani/secret/v2.Text`          | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
+| `rsjethani/secret/v3.Text`          | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `andrewbenton/go-secrets.Secret[T]` | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `rbranson/camo.Secret[T]`           | ✓    | ✓    | ✓   | ✓     | ✓         | ✓          |
 | `go-playground/sensitive.String`    | ✓    | ✓    | ✓   | ✓     | ✓         | ✗          |

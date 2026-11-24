@@ -16,6 +16,7 @@ import (
 	powermanSensitive "github.com/powerman/sensitive"
 	"github.com/rbranson/camo"
 	"github.com/rsjethani/secret/v2"
+	secretv3 "github.com/rsjethani/secret/v3"
 	"github.com/shoenig/go-conceal"
 )
 
@@ -30,21 +31,23 @@ type Public string
 // leakDemo groups all leakable types as unexported fields.
 // Fields 1-5 are sensitive (caught by the linter). Field 6 is NOT sensitive
 // and should NOT be flagged — demonstrating type-level granularity.
-// Fields 7-10 use [sensitive.Ref], [sensitive.Handle], [secret.Text] and [camo.Secret]
+// Fields 7-11 use [sensitive.Ref], [sensitive.Handle], [secret.Text], [secretv3.Text]
+// and [camo.Secret]
 // which protect against fmt reflection — also NOT flagged.
 // When printed via fmt, all raw values leak because reflection on unexported
 // fields bypasses Stringer/Formatter.
 type leakDemo struct {
-	playground playgroundSensitive.String // leak:
-	secrecy    *secrecy.Secret[string]    // leak:
-	logfusc    logfusc.Secret[string]     // leak:
-	conceal    *conceal.Text              // leak:
-	secret     Secret                     // leak:
-	public     Public
-	ref        powermanSensitive.Ref[string]    // no-leak: **T reflection-proof
-	handle     powermanSensitive.Handle[string] // no-leak: *string (non-compound)
-	rsjethani  secret.Text                      // no-leak: *string fields print as an address
-	camo       camo.Secret[string]              // no-leak: unsafe.Pointer
+	playground  playgroundSensitive.String // leak:
+	secrecy     *secrecy.Secret[string]    // leak:
+	logfusc     logfusc.Secret[string]     // leak:
+	conceal     *conceal.Text              // leak:
+	secret      Secret                     // leak:
+	public      Public
+	ref         powermanSensitive.Ref[string]    // no-leak: **T reflection-proof
+	handle      powermanSensitive.Handle[string] // no-leak: *string (non-compound)
+	rsjethani   secret.Text                      // no-leak: *string fields print as an address
+	rsjethaniV3 secretv3.Text                    // no-leak: *string fields print as an address
+	camo        camo.Secret[string]              // no-leak: unsafe.Pointer
 }
 
 // innerStruct contains an unexported sensitive field.
@@ -65,16 +68,17 @@ type leakViaPointer struct {
 func main() {
 	// Unexported field leak: all sensitive field values are printed raw.
 	fmt.Println(leakDemo{
-		playground: "value protected by go-playground/sensitive.String",
-		secrecy:    secrecy.NewSecret("value protected by negrel/secrecy.Secret"),
-		logfusc:    logfusc.NewSecret("value protected by logfusc.Secret"),
-		conceal:    conceal.New("value protected by go-conceal.Text"),
-		secret:     "value protected by Secret (declared in main)",
-		public:     "value protected by Public (not sensitive)",
-		ref:        powermanSensitive.New("value protected by Ref from fmt reflection"),
-		handle:     powermanSensitive.Make("value protected by Handle from fmt reflection"),
-		rsjethani:  secret.NewText("value protected by rsjethani/secret.Text"),
-		camo:       camo.Obscure("value protected by camo.Secret"),
+		playground:  "value protected by go-playground/sensitive.String",
+		secrecy:     secrecy.NewSecret("value protected by negrel/secrecy.Secret"),
+		logfusc:     logfusc.NewSecret("value protected by logfusc.Secret"),
+		conceal:     conceal.New("value protected by go-conceal.Text"),
+		secret:      "value protected by Secret (declared in main)",
+		public:      "value protected by Public (not sensitive)",
+		ref:         powermanSensitive.New("value protected by Ref from fmt reflection"),
+		handle:      powermanSensitive.Make("value protected by Handle from fmt reflection"),
+		rsjethani:   secret.NewText("value protected by rsjethani/secret.Text"),
+		rsjethaniV3: secretv3.New("value protected by rsjethani/secret/v3.Text"),
+		camo:        camo.Obscure("value protected by camo.Secret"),
 	})
 
 	// Pointer-to-compound leak: exported pointer field dereferences and leaks.
