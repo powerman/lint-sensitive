@@ -45,10 +45,8 @@ var publicFields = map[string][]string{ // Const.
 	"github.com/rbranson/camo.Secret": {"hash"},
 }
 
-// matcherFunc is the type of functions that retrieve a matcher from an analysis pass.
-// It abstracts over the two ways to obtain a matcher:
-// from New() (always returns the same pre-built matcher)
-// and from NewFlagAnalyzers (reads the matcher from pass.ResultOf).
+// matcherFunc retrieves a matcher from an analysis pass,
+// see ARCHITECTURE.md ("Lifecycle and configuration").
 // The error reports an invalid Config.
 type matcherFunc func(*analysis.Pass) (matcher, error)
 

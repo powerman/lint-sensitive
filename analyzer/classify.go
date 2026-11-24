@@ -101,9 +101,7 @@ func (matcher) isQualifier(t types.Type) bool {
 			// Conservative (compound) when the constraint is absent, any, or method-only.
 			return !typeElemHasCompoundTerm(e.Constraint())
 		case *types.Named:
-			// fmt dereferences a depth-0 pointer only for compound kinds,
-			// so a pointer to any non-compound named type (e.g. *MyString)
-			// prints as an address.
+			// A pointer to a non-compound named type (e.g. *MyString) prints as an address.
 			return !isCompoundKind(e)
 		}
 		return false // *<compound> — pointee is a compound type
@@ -156,8 +154,7 @@ func typeElemHasCompoundTerm(elem types.Type) bool {
 // isStructurallySafe reports whether fmt prints every value the type can carry
 // as an address or header, so that the type protects its content
 // even when ALL of Formatter/Stringer/GoStringer are disabled.
-// It must have at least one qualifier;
-// zero-size parts (`_ [0]func()`, struct{}) carry nothing and do not matter.
+// It must have at least one qualifier.
 func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) bool {
 	safe, protected := m.structural(t, visited)
 	return safe && protected
@@ -165,9 +162,7 @@ func (m matcher) isStructurallySafe(t types.Type, visited map[types.Type]bool) b
 
 // structural reports whether every value t can carry is printed as an address or header (safe)
 // and whether t has at least one qualifier (protected).
-// A type seen again (a recursive type, or a type shared by sibling fields)
-// is neutral: its first visit already contributed to the result,
-// because the results of all parts are combined with AND (safe) and OR (protected).
+// A type seen again is neutral, see ARCHITECTURE.md ("Classification of a safe type").
 func (m matcher) structural(t types.Type, visited map[types.Type]bool) (safe, protected bool) {
 	t = types.Unalias(t)
 	if visited[t] {
@@ -203,9 +198,7 @@ func (m matcher) structural(t types.Type, visited map[types.Type]bool) (safe, pr
 
 // isStructurallySafeNamed is [matcher.isStructurallySafe] for a configured named type,
 // ignoring its top-level fields named in public (see matcher.public).
-// It also returns the names of the fields which were ignored:
-// a listed name which the struct does not have is not ignored
-// (the library changed), so the type falls back to the plain rule, which is the safe direction.
+// It also returns the names of the fields which were ignored.
 func (m matcher) isStructurallySafeNamed(t *types.Named, public []string) (bool, []string) {
 	st, ok := t.Underlying().(*types.Struct)
 	if !ok || len(public) == 0 {
@@ -228,8 +221,7 @@ func (m matcher) isStructurallySafeNamed(t *types.Named, public []string) (bool,
 // isOpaqueStruct reports whether reflection-based encoders such as encoding/json
 // write t empty: it is a struct whose fields are all unexported and none is embedded.
 // Fields named in public (see matcher.public) are skipped
-// even if they are exported or embedded;
-// a listed name which the struct does not have is not applied.
+// even if they are exported or embedded.
 func isOpaqueStruct(t types.Type, public []string) bool {
 	st, ok := t.(*types.Struct)
 	if !ok {

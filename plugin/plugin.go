@@ -14,11 +14,8 @@ func init() { //nolint:gochecknoinits // The golangci-lint module plugin system 
 
 // Settings are the plugin settings in .golangci.yml.
 // Their keys match the flags of the lint-sensitive binary,
-// but the lists are YAML lists instead of comma-separated strings.
-//
-// There are no skip-tests, skip-generated and debug settings:
-// golangci-lint excludes tests and generated files with linters.exclusions,
-// and writing to stderr does not fit it.
+// except for the lists and the missing skip-tests, skip-generated and debug settings,
+// see ARCHITECTURE.md ("Lifecycle and configuration").
 //
 //nolint:tagliatelle // The keys follow the kebab-case convention of golangci-lint settings.
 type Settings struct {

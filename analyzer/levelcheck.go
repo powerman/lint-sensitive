@@ -100,30 +100,8 @@ func typeIdent(e ast.Expr) *ast.Ident {
 // runReliabilityLevels checks all configured safe types found in the analyzed package
 // against user-selected reliability-level flags
 // and emits diagnostics for any that do not meet the required protection level.
-// It reports at the type usage site within the analyzed package.
-// (Declaration-site reporting is not practical because the declaration of most
-// configured safe types — the built-in defaults — lives in an external package.)
-// A generic type is checked as the instance the code uses, e.g. SinglePtr[string],
-// and an alias is resolved to the type it stands for.
-// References in files skipped by skip-tests or skip-generated are ignored,
-// so a type used both there and in a regular file is reported in the regular one.
-// Only the first occurrence of each type is kept,
-// and the diagnostics are emitted in the order of these positions (deterministic).
-// Instances of one generic type which fail for the same reason are reported once.
-//
-// A type is checked by the method set of T if the package has any value-form use of it,
-// and by the method set of *T only if every use is the pointer form.
-// The method set of *T contains that of T,
-// so a failed check of *T implies a failed check of T:
-// one check per type is enough.
-// A use is a type name (a declaration, a reference or an instantiation)
-// or an expression whose type is T or *T.
-// The pointer form is a type name which is the operand of a pointer type,
-// like *conceal.Text, []*conceal.Text or *Secret[string],
-// or the type in &T{} and new(T), whose value is held only as *T.
-// A defined pointer type, like type PT *T, is not the pointer form:
-// its values have no methods, so fmt and encoders see the T value.
-// An expression of a defined pointer type is a value-form use of its element type.
+// It reports at the first use of each type, in the order of positions.
+// See ARCHITECTURE.md ("Reliability levels") for what a use is and how a type is checked.
 func (c *checker) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(token.Pos) bool) {
 	demanded := requires{
 		marshalJSONSafe: c.requireMarshalJSON,

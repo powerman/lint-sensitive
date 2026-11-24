@@ -18,20 +18,13 @@ const (
 	factorNonFormatterPointer = "nonFormatterPointer"
 )
 
-// printState is how fmt prints the values which walk reaches.
+// printState is how fmt prints the values which walk reaches, see ARCHITECTURE.md ("The walk").
 type printState uint8
 
 const (
-	// stateClean: fmt calls methods of the value and uses the verb of the caller.
-	stateClean printState = iota
-	// stateNoMethods: the path entered an unexported field.
-	// fmt does not call methods there, but keeps the verb of the caller,
-	// so a pointer may still cause badVerb, which dereferences it.
-	stateNoMethods
-	// stateErroring: badVerb reprints the pointer which caused it with %v and without methods.
-	// It dereferences only that pointer:
-	// every pointer nested in the pointee prints as an address.
-	stateErroring
+	stateClean     printState = iota // Methods are called, the verb of the caller is used.
+	stateNoMethods                   // Inside an unexported field: no methods, the verb is kept.
+	stateErroring                    // Inside the pointer which caused badVerb.
 )
 
 // walkKey is the memoization key of walk.
@@ -71,79 +64,7 @@ func leakStep(named *types.Named) walkStep {
 	}
 }
 
-// Linter logic (Formatter-termination reachability):
-//
-// The linter knows a set of safe types for secrets (configured via -sensitive.types).
-// Safe types can protect secrets through a combination of mechanisms:
-//   - Storing the secret in an unexported field.
-//     This is the most reliable protection against JSON serialization etc.
-//   - Implementing [encoding.TextMarshaler] and/or [json.Marshaler].
-//     This is an alternative way to protect against JSON serialization etc.
-//   - Storing the secret in one of the types that [fmt.Printf] never follows:
-//     *Pointer (**T), *Interface (*any(T)), Chan (<-chan T), Func (func() T),
-//     UnsafePointer, *<non-compound> (*string, *int, *bool, etc.).
-//     This is the only structural protection against [fmt.Printf].
-//   - Implementing [fmt.Formatter] and/or [fmt.Stringer] and/or [fmt.GoStringer].
-//     These are varying degrees of protection against the [fmt.Printf] family.
-//     Support for these methods can be disabled depending on the path to the value.
-//
-// The linter's tasks:
-//   - Unconditional: warn about weakening the base protection level of safe types.
-//     Detect places where Formatter/Stringer/GoStringer support
-//     is disabled for types that implement some of these interfaces
-//     and are not structurally protected (see [matcher.isStructurallySafe]).
-//   - Optional reliability-level: warn about using safe types that
-//     do not provide the required level of protection for the configured attack surface.
-//
-// Even though a safe type having interface implementations does not guarantee
-// that this functionality is used specifically for secret protection,
-// the linter assumes it is (any other approach is useless).
-// Structural protection is not assumed this way:
-// it counts only when every field of the type is protected,
-// so an unrelated field (a callback, a counter, a cache) cannot fake it.
-//
-// For safe types implementing ([fmt.Formatter] or [fmt.Stringer] or [fmt.GoStringer])
-// AND not structurally protected:
-//   - The linter checks the path leading to these types
-//     for factors that disable support for these interfaces:
-//     1. unexported field
-//     2. Pointer type not implementing Formatter (may be in an exported field too)
-//   - If such a factor is detected, it reports incorrect use of the safe type.
-//   - A pointer directly to a safe type is not a factor on its own:
-//     fmt holds *T, so it is judged by the method set of *T,
-//     and on a clean path the methods of *T fire.
-//     A pointer to a holder struct is a factor, as any non-Formatter pointer.
-//   - A defined pointer type (type PT *T) has no methods,
-//     so it is a non-Formatter pointer even when *T has fmt methods.
-//
-// Rationale:
-//   - If a safe type is structurally protected,
-//     disabling Formatter/Stringer/GoStringer only blocks replacing
-//     the secret value with "REDACTED" or similar,
-//     while instead of the secret the address of the intermediate pointer will be printed.
-//   - The [fmt.Printf] family disables interface support in only two cases:
-//     1. entering an unexported field;
-//     2. calling badVerb.
-//   - For badVerb the linter must consider ALL situations where badVerb CAN trigger
-//     (because the linter cannot know which verb will actually be used
-//     and must assume the one that triggers badVerb).
-//     The only type relevant to the linter is Pointer, because non-compound types
-//     (bool/numeric/String/Chan/Func/UnsafePointer/Invalid plus []byte)
-//     are either themselves the safe type with Formatter
-//     or have no relation to storing secrets.
-//     The only remaining type where badVerb can occur is Pointer.
-//     The only exception: if this Pointer type itself implements Formatter —
-//     in this case it is also a terminal type and cannot cause problems
-//     (because fmt encounters this Pointer BEFORE calling badVerb,
-//     and if it implements Formatter, the badVerb call simply won't happen —
-//     Formatter by definition supports all verbs).
-//   - badVerb reprints the value with %v and with methods off,
-//     and dereferences only the pointer which caused it,
-//     so pointers nested deeper in the pointee print as addresses.
-//   - An unexported field turns methods off but keeps the verb,
-//     so a pointer under it can still cause badVerb.
-//
-// walk is the Formatter-termination walk.
+// walk is the Formatter-termination walk, see ARCHITECTURE.md ("The walk").
 // It returns true when a safe type reachable through t would leak its secret content
 // when fmt prints t in the print state st.
 // visited prevents infinite recursion on cyclic types;
@@ -180,13 +101,7 @@ func (c *checker) walk(t types.Type, st printState, visited map[walkKey]bool, fa
 		return c.walk(u.Key(), st, visited, factorAt, path) ||
 			c.walk(u.Elem(), st, visited, factorAt, path)
 	case *types.Interface:
-		// Flag only SecretExposer interfaces — those that have an ExposeSecret method,
-		// the convention used by github.com/powerman/sensitive.Secret[T] and
-		// github.com/negrel/secrecy.SecretExposer[T].
-		// Generic any/interface{} and all other arbitrary interfaces are NOT flagged:
-		// the static analyzer cannot know what concrete type will be stored in them,
-		// and flagging them causes a torrent of false positives from external library
-		// internals (e.g. prometheus.Metric or error deep inside a metrics struct).
+		// Only SecretExposer interfaces are flagged, see ARCHITECTURE.md ("The walk").
 		return c.isSecretExposer(u) && st != stateClean
 	case *types.Named:
 		return c.walkNamed(u, st, visited, factorAt, path)
@@ -249,22 +164,19 @@ func enterField(f *types.Var, st printState, factorAt *disableFactor) (printStat
 func (c *checker) walkNamed(u *types.Named, st printState,
 	visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep,
 ) bool {
-	// A defined pointer type has no methods,
-	// so fmt calls neither the methods of *T nor Format of the pointee through it.
+	// A defined pointer type has no methods.
 	if p, ok := u.Underlying().(*types.Pointer); ok {
 		return c.walkPointer(u, p, st, visited, factorAt, path)
 	}
-	// A named type with fmt.Formatter reached with fmt interfaces still enabled
-	// redacts under every verb, so it is a safe terminal (same trust as *types.Pointer).
-	// Where methods are off the method may not fire, so it must not be trusted there.
+	// A Formatter reached with fmt interfaces still enabled is a safe terminal
+	// (see ARCHITECTURE.md, "What fmt does").
 	if st == stateClean && c.hasMethod(u, methodFormat) {
 		return false
 	}
 	if !c.walk(u.Underlying(), st, visited, factorAt, path) {
 		return false
 	}
-	// A SecretExposer interface is a terminal which has no step of its own,
-	// because the walk sees only the unnamed interface type.
+	// A SecretExposer interface has no step of its own.
 	if _, ok := u.Underlying().(*types.Interface); ok {
 		*path = append(*path, leakStep(u))
 	}

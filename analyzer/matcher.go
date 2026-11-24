@@ -21,11 +21,8 @@ type matcher struct {
 	skipGenerated bool
 	debug         bool
 
-	// debugPrinted holds the debug lines already printed.
-	// It is keyed by the whole line, which includes the type arguments,
-	// so instances of one generic type with different classification are all printed,
-	// while the same type seen in several packages is printed only once.
-	// The per-package matchers of the flag-driven path share one map (see NewFlagAnalyzers).
+	// debugPrinted holds the debug lines already printed,
+	// see ARCHITECTURE.md ("Lifecycle and configuration").
 	debugPrinted *sync.Map
 
 	// public maps a qualifiedName of a type to the names of its fields
@@ -43,11 +40,7 @@ type matcher struct {
 }
 
 // checker is the per-pass state of the fields analyzer.
-// Its caches are keyed by type identity,
-// which is exact only within one pass, so a checker must not outlive its pass.
-// A process-wide cache would keep the types of every pass alive in long-running drivers
-// (gopls, golangci-lint daemons), and a string key cannot tell apart local types
-// of different functions which share a name.
+// A checker must not outlive its pass, see ARCHITECTURE.md ("Lifecycle and configuration").
 type checker struct {
 	matcher
 
@@ -186,8 +179,6 @@ func (m matcher) isSensitiveBasic(t types.Type) bool {
 	if !ok {
 		return false
 	}
-	// Only basic-kind underlying types leak their content through builtin print/println
-	// (string, bool, numeric).
 	// Slices, pointers, structs, etc. either print header info or don't compile.
 	_, isBasic := named.Underlying().(*types.Basic)
 	return isBasic

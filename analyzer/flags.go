@@ -16,7 +16,7 @@ import (
 // The first one registers the -sensitive.* flags
 // and passes the resulting configuration to the others via Requires.
 // The -sensitive.require-* and -sensitive.debug flags affect only sensitivefields.
-// Each call returns an independent set, so the flags are not shared between calls.
+// Each call returns an independent set.
 func NewFlagAnalyzers() []*analysis.Analyzer {
 	var (
 		cfg           Config
