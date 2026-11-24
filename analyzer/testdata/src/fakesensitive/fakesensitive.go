@@ -182,6 +182,13 @@ func NewPtrRecv() *PtrRecv { return new(PtrRecv) }
 // ValuePtrRecv returns a PtrRecv value.
 func ValuePtrRecv() PtrRecv { return "" }
 
+// DefinedPtr is a configured safe type which is itself a defined pointer type:
+// it has no methods, and fmt prints the PtrRecv value it points to.
+type DefinedPtr *PtrRecv
+
+// NewDefinedPtr returns a DefinedPtr.
+func NewDefinedPtr() DefinedPtr { return NewPtrRecv() }
+
 // Credential has a public ID next to a structurally protected secret.
 // The linter cannot tell that ID is public without -sensitive.public.
 type Credential struct {

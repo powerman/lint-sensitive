@@ -122,3 +122,14 @@ func TestRequireRevealingMethod(t *testing.T) {
 
 	runNew(t, requireAll(), "sensitivefields", "reliability_conceal")
 }
+
+// TestRequireDefinedPointerType verifies that a type used through a defined pointer type
+// is checked by the method set of T: such a pointer type has no methods.
+// A configured safe type which is a defined pointer type is checked too.
+func TestRequireDefinedPointerType(t *testing.T) {
+	t.Parallel()
+
+	runNew(t, requireAll(), "sensitivefields", "reliability_named_ptr")
+	runNew(t, requireAll(), "sensitivefields", "reliability_named_ptr_ext")
+	runNew(t, requireAll(), "sensitivefields", "reliability_named_ptr_safe")
+}

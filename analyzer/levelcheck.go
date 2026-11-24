@@ -119,7 +119,11 @@ func typeIdent(e ast.Expr) *ast.Ident {
 // A use is a type name (a declaration, a reference or an instantiation)
 // or an expression whose type is T or *T.
 // The pointer form is a type name which is the operand of a pointer type,
-// like *conceal.Text, []*conceal.Text or *Secret[string].
+// like *conceal.Text, []*conceal.Text or *Secret[string],
+// or the type in &T{} and new(T), whose value is held only as *T.
+// A defined pointer type, like type PT *T, is not the pointer form:
+// its values have no methods, so fmt and encoders see the T value.
+// An expression of a defined pointer type is a value-form use of its element type.
 func (c *checker) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(token.Pos) bool) {
 	demanded := requires{
 		marshalJSONSafe: c.requireMarshalJSON,
@@ -142,7 +146,7 @@ func (c *checker) runReliabilityLevels(pass *analysis.Pass, shouldCheck func(tok
 // each with the position of its first use, ordered by position.
 // See [checker.runReliabilityLevels] for what a use is.
 func (c *checker) collectUses(pass *analysis.Pass, shouldCheck func(token.Pos) bool) []typeUse {
-	ptrIdents := pointerIdents(pass)
+	ptrIdents, held := pointerForms(pass)
 
 	// The first position of each configured safe type, by the form of its use.
 	var firstValue, firstPtr typeutil.Map
@@ -182,29 +186,96 @@ func (c *checker) collectUses(pass *analysis.Pass, shouldCheck func(token.Pos) b
 	// Expressions of the type, even when the code never names it,
 	// e.g. a result of a constructor.
 	for expr, tv := range pass.TypesInfo.Types {
-		if !tv.IsValue() {
+		if !tv.IsValue() || held[expr] {
 			continue
 		}
-		if ptr, ok := types.Unalias(tv.Type).(*types.Pointer); ok {
+		t := types.Unalias(tv.Type)
+		if ptr, ok := t.(*types.Pointer); ok {
 			c.collectType(shouldCheck, ptr.Elem(), expr.Pos(), &firstPtr)
-		} else {
-			c.collectType(shouldCheck, tv.Type, expr.Pos(), &firstValue)
+			continue
+		}
+		c.collectType(shouldCheck, t, expr.Pos(), &firstValue)
+		// A defined pointer type has no methods: fmt prints the pointee as a T value.
+		if ptr, ok := t.Underlying().(*types.Pointer); ok {
+			c.collectType(shouldCheck, ptr.Elem(), expr.Pos(), &firstValue)
 		}
 	}
 
 	return sortedUses(&firstValue, &firstPtr)
 }
 
-// pointerIdents returns the identifiers of type names which are the operand of a pointer type.
-func pointerIdents(pass *analysis.Pass) map[*ast.Ident]bool {
+// pointerForms returns the identifiers of type names in the pointer form
+// and the expressions of type T which the program can hold only as *T:
+// the operand of & in &T{} and the argument of new.
+func pointerForms(pass *analysis.Pass) (idents map[*ast.Ident]bool, held map[ast.Expr]bool) {
 	insp := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
-	res := make(map[*ast.Ident]bool)
-	for star := range inspector.All[*ast.StarExpr](insp) {
-		if id := typeIdent(star.X); id != nil {
-			res[id] = true
+	idents = make(map[*ast.Ident]bool)
+	held = make(map[ast.Expr]bool)
+
+	// The operand of the pointer type in the declaration of a defined (non-alias) type,
+	// like type PT *T, is not the pointer form: PT has no methods.
+	definedPtr := make(map[*ast.StarExpr]bool)
+	for ts := range inspector.All[*ast.TypeSpec](insp) {
+		if star, ok := ast.Unparen(ts.Type).(*ast.StarExpr); ok && ts.Assign == token.NoPos {
+			definedPtr[star] = true
 		}
 	}
-	return res
+	for star := range inspector.All[*ast.StarExpr](insp) {
+		if !definedPtr[star] {
+			markIdent(idents, star.X)
+		}
+	}
+
+	for x := range inspector.All[*ast.UnaryExpr](insp) {
+		lit, ok := ast.Unparen(x.X).(*ast.CompositeLit)
+		if ok && x.Op == token.AND && lit.Type != nil {
+			markIdent(idents, lit.Type)
+			markHeld(held, x.X)
+		}
+	}
+
+	for call := range inspector.All[*ast.CallExpr](insp) {
+		if !isNewCall(pass, call) {
+			continue
+		}
+		if arg := call.Args[0]; pass.TypesInfo.Types[arg].IsType() {
+			markIdent(idents, arg)
+		} else {
+			// Go 1.26+ new(expr).
+			markHeld(held, arg)
+		}
+	}
+	return idents, held
+}
+
+// markIdent adds the identifier of the type name which e denotes to idents.
+func markIdent(idents map[*ast.Ident]bool, e ast.Expr) {
+	if id := typeIdent(e); id != nil {
+		idents[id] = true
+	}
+}
+
+// markHeld adds e and the expressions inside its parentheses to held:
+// go/types records a type for each ParenExpr too.
+func markHeld(held map[ast.Expr]bool, e ast.Expr) {
+	for {
+		held[e] = true
+		p, ok := e.(*ast.ParenExpr)
+		if !ok {
+			return
+		}
+		e = p.X
+	}
+}
+
+// isNewCall reports whether call is a call of the builtin new with one argument.
+func isNewCall(pass *analysis.Pass, call *ast.CallExpr) bool {
+	id, ok := ast.Unparen(call.Fun).(*ast.Ident)
+	if !ok || len(call.Args) != 1 {
+		return false
+	}
+	b, ok := pass.TypesInfo.Uses[id].(*types.Builtin)
+	return ok && b.Name() == "new"
 }
 
 // sortedUses merges the first positions of the value and pointer forms into uses:

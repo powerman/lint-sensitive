@@ -20,3 +20,10 @@ type Check struct {
 	// log/slog TextHandler prints a type without MarshalText with %+v.
 	R fakesensitive.RevealingString // want "configured safe type fakesensitive.RevealingString does not guarantee text marshal safety: String outputs the secret$" "configured safe type fakesensitive.RevealingString does not guarantee String-level safety: String outputs the secret$"
 }
+
+// These are pointer-form uses: the T value itself never reaches fmt.
+func use() {
+	_ = &fakeconceal.Text{}
+	_ = &(fakeconceal.Text{})
+	_ = new(fakeconceal.Bytes)
+}
