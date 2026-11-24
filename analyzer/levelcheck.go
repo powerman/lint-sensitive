@@ -158,30 +158,7 @@ func (c *checker) collectUses(pass *analysis.Pass, shouldCheck func(token.Pos) b
 		c.collectType(shouldCheck, t, id.Pos(), first)
 	}
 
-	// Local type declarations.
-	// A generic type is collected as its origin: there it is the type for any type argument.
-	for id, obj := range pass.TypesInfo.Defs {
-		if tn, ok := obj.(*types.TypeName); ok {
-			collectIdent(id, tn.Type())
-		}
-	}
-
-	// External type references.
-	for id, obj := range pass.TypesInfo.Uses {
-		tn, ok := obj.(*types.TypeName)
-		// The instance of a generic type or alias is collected from Instances below:
-		// its object has unbound type parameters.
-		if _, inst := pass.TypesInfo.Instances[id]; !ok || inst {
-			continue
-		}
-		collectIdent(id, tn.Type())
-	}
-
-	// Instances of generic types.
-	// Instances of generic functions are not Named and are skipped.
-	for id, inst := range pass.TypesInfo.Instances {
-		collectIdent(id, inst.Type)
-	}
+	eachTypeName(pass, collectIdent)
 
 	// Expressions of the type, even when the code never names it,
 	// e.g. a result of a constructor.
@@ -204,6 +181,35 @@ func (c *checker) collectUses(pass *analysis.Pass, shouldCheck func(token.Pos) b
 	return sortedUses(&firstValue, &firstPtr)
 }
 
+// eachTypeName calls visit for every identifier which declares or refers to a type
+// with the type it denotes.
+func eachTypeName(pass *analysis.Pass, visit func(*ast.Ident, types.Type)) {
+	// Local type declarations.
+	// A generic type is visited as its origin: there it is the type for any type argument.
+	for id, obj := range pass.TypesInfo.Defs {
+		if tn, ok := obj.(*types.TypeName); ok {
+			visit(id, tn.Type())
+		}
+	}
+
+	// External type references.
+	for id, obj := range pass.TypesInfo.Uses {
+		tn, ok := obj.(*types.TypeName)
+		// The instance of a generic type or alias is visited from Instances below:
+		// its object has unbound type parameters.
+		if _, inst := pass.TypesInfo.Instances[id]; !ok || inst {
+			continue
+		}
+		visit(id, tn.Type())
+	}
+
+	// Instances of generic types.
+	// Instances of generic functions are not Named and are skipped by the callers.
+	for id, inst := range pass.TypesInfo.Instances {
+		visit(id, inst.Type)
+	}
+}
+
 // pointerForms returns the identifiers of type names in the pointer form
 // and the expressions of type T which the program can hold only as *T:
 // the operand of & in &T{} and the argument of new.
@@ -212,14 +218,7 @@ func pointerForms(pass *analysis.Pass) (idents map[*ast.Ident]bool, held map[ast
 	idents = make(map[*ast.Ident]bool)
 	held = make(map[ast.Expr]bool)
 
-	// The operand of the pointer type in the declaration of a defined (non-alias) type,
-	// like type PT *T, is not the pointer form: PT has no methods.
-	definedPtr := make(map[*ast.StarExpr]bool)
-	for ts := range inspector.All[*ast.TypeSpec](insp) {
-		if star, ok := ast.Unparen(ts.Type).(*ast.StarExpr); ok && ts.Assign == token.NoPos {
-			definedPtr[star] = true
-		}
-	}
+	definedPtr := definedPointerOperands(insp)
 	for star := range inspector.All[*ast.StarExpr](insp) {
 		if !definedPtr[star] {
 			markIdent(idents, star.X)
@@ -246,6 +245,19 @@ func pointerForms(pass *analysis.Pass) (idents map[*ast.Ident]bool, held map[ast
 		}
 	}
 	return idents, held
+}
+
+// definedPointerOperands returns the operands of the pointer type
+// in the declaration of a defined (non-alias) type, like type PT *T.
+// They are not the pointer form: PT has no methods.
+func definedPointerOperands(insp *inspector.Inspector) map[*ast.StarExpr]bool {
+	res := make(map[*ast.StarExpr]bool)
+	for ts := range inspector.All[*ast.TypeSpec](insp) {
+		if star, ok := ast.Unparen(ts.Type).(*ast.StarExpr); ok && ts.Assign == token.NoPos {
+			res[star] = true
+		}
+	}
+	return res
 }
 
 // markIdent adds the identifier of the type name which e denotes to idents.
@@ -326,19 +338,9 @@ func (c *checker) emitLevelDiagnostics(
 	}
 
 	for _, d := range surfaces(demanded, satisfies) {
-		// A revealing method fails the surface whatever other safeguards the type has.
-		revealing := revealingServing(cls.revealing, d.servedBy)
-		if !d.demand || d.satisfy && revealing == "" {
+		msg := levelMessage(typeName, d, cls, use)
+		if msg == "" {
 			continue
-		}
-		msg := "configured safe type " + typeName + " does not guarantee " + d.name
-		if revealing != "" {
-			msg += ": " + revealing + " outputs the secret"
-		} else {
-			msg += ": " + d.reason
-			if !use.viaPointer {
-				msg += ptrOnlyHint(cls.ptrOnly, d.methods)
-			}
 		}
 		key := levelReport{origin: named.Origin().Obj(), msg: msg}
 		if reported[key] {
@@ -347,6 +349,25 @@ func (c *checker) emitLevelDiagnostics(
 		reported[key] = true
 		pass.Report(analysis.Diagnostic{Pos: use.pos, Message: msg})
 	}
+}
+
+// levelMessage returns the diagnostic for the surface d of the type typeName,
+// or an empty string when the surface needs none.
+func levelMessage(typeName string, d surface, cls *typeClass, use typeUse) string {
+	// A revealing method fails the surface whatever other safeguards the type has.
+	revealing := revealingServing(cls.revealing, d.servedBy)
+	if !d.demand || d.satisfy && revealing == "" {
+		return ""
+	}
+	msg := "configured safe type " + typeName + " does not guarantee " + d.name
+	if revealing != "" {
+		return msg + ": " + revealing + " outputs the secret"
+	}
+	msg += ": " + d.reason
+	if !use.viaPointer {
+		msg += ptrOnlyHint(cls.ptrOnly, d.methods)
+	}
+	return msg
 }
 
 // surface is one reliability requirement and whether the type satisfies it.

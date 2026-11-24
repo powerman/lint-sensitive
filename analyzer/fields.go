@@ -79,6 +79,20 @@ func (c *checker) formatterStructs(pass *analysis.Pass, in *inspector.Inspector)
 	return res
 }
 
+// checkField reports the field f of a struct declared in the analyzed package
+// if fmt can print the content of a safe type through it.
+func (c *checker) checkField(pass *analysis.Pass, f *types.Var) {
+	st, factor := enterField(f, stateClean, &disableFactor{})
+	var path []walkStep
+	if c.walk(f.Type(), st, make(map[walkKey]bool), factor, &path) {
+		pass.Report(analysis.Diagnostic{
+			Pos:     f.Pos(),
+			Message: formatDiagnostic(f, factor),
+			Related: relatedInformation(pass.Fset, path),
+		})
+	}
+}
+
 // runFields is the shared core used by both flag-driven and New()-based fields analyzers.
 func runFields(pass *analysis.Pass, m matcher) (any, error) {
 	inspectResult := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
@@ -96,22 +110,8 @@ func runFields(pass *analysis.Pass, m matcher) (any, error) {
 			continue
 		}
 		for f := range typ.Fields() {
-			if !shouldCheck(f.Pos()) {
-				continue
-			}
-			var factor disableFactor
-			st := stateClean
-			if !f.Exported() {
-				st = stateNoMethods
-				factor = disableFactor{kind: factorUnexportedField, name: f.Name()}
-			}
-			var path []walkStep
-			if c.walk(f.Type(), st, make(map[walkKey]bool), &factor, &path) {
-				pass.Report(analysis.Diagnostic{
-					Pos:     f.Pos(),
-					Message: formatDiagnostic(f, &factor),
-					Related: relatedInformation(pass.Fset, path),
-				})
+			if shouldCheck(f.Pos()) {
+				c.checkField(pass, f)
 			}
 		}
 	}

@@ -214,15 +214,7 @@ func (c *checker) walkStruct(u *types.Struct, st printState,
 	visited map[walkKey]bool, factorAt *disableFactor, path *[]walkStep,
 ) bool {
 	for f := range u.Fields() {
-		fst, factor := st, factorAt
-		if !f.Exported() {
-			if fst == stateClean {
-				fst = stateNoMethods
-			}
-			if factorAt.kind == "" {
-				factor = &disableFactor{kind: factorUnexportedField, name: f.Name()}
-			}
-		}
+		fst, factor := enterField(f, st, factorAt)
 		if !c.walk(f.Type(), fst, visited, factor, path) {
 			continue
 		}
@@ -234,6 +226,23 @@ func (c *checker) walkStruct(u *types.Struct, st printState,
 		return true
 	}
 	return false
+}
+
+// enterField returns the print state and the disable factor to walk the type of the field f
+// of a struct which fmt prints in the state st with the factor factorAt.
+// An unexported field turns methods off,
+// and becomes the factor unless the path already has one.
+func enterField(f *types.Var, st printState, factorAt *disableFactor) (printState, *disableFactor) {
+	if f.Exported() {
+		return st, factorAt
+	}
+	if st == stateClean {
+		st = stateNoMethods
+	}
+	if factorAt.kind == "" {
+		factorAt = &disableFactor{kind: factorUnexportedField, name: f.Name()}
+	}
+	return st, factorAt
 }
 
 // walkNamed is walk for the named type u which is not a safe type.
