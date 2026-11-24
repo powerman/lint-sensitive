@@ -151,21 +151,28 @@ func parsePublicField(entry string) (typeKey, field string, err error) {
 	if !ok || !token.IsIdentifier(field) {
 		return "", "", errBadPublicField
 	}
-	pkg, typ, ok := strings.CutLast(typeKey, ".")
-	if !ok || pkg == "" || !token.IsIdentifier(typ) || !token.IsExported(typ) {
+	if _, _, valid := parseTypeEntry(typeKey); !valid {
 		return "", "", errBadPublicField
 	}
 	return typeKey, field, nil
 }
 
-// addEntry adds one entry to the matcher.
-// An entry whose part after the last dot is an exported identifier names a type,
-// any other entry is an import path
-// (which may itself end with a dot-suffix, e.g. "gopkg.in/yaml.v3").
+// parseTypeEntry splits "import/path.TypeName" with an exported TypeName.
+// It reports false for any other entry,
+// e.g. an import path which ends with a dot-suffix like "gopkg.in/yaml.v3".
+func parseTypeEntry(entry string) (pkg, name string, ok bool) {
+	pkg, name, ok = strings.CutLast(entry, ".")
+	if !ok || pkg == "" || !token.IsIdentifier(name) || !token.IsExported(name) {
+		return "", "", false
+	}
+	return pkg, name, true
+}
+
+// addEntry adds one entry to the matcher:
+// a type if [parseTypeEntry] accepts it, otherwise an import path.
 func (m matcher) addEntry(entry string) {
-	if head, tail, ok := strings.CutLast(entry, "."); ok &&
-		head != "" && token.IsIdentifier(tail) && token.IsExported(tail) {
-		m.types[packageType{Pkg: head, Name: tail}] = true
+	if pkg, name, ok := parseTypeEntry(entry); ok {
+		m.types[packageType{Pkg: pkg, Name: name}] = true
 		return
 	}
 	m.packages[entry] = true
@@ -382,9 +389,11 @@ func (c *checker) classify(t *types.Named) *typeClass {
 		textMarshaler: c.hasMethod(t, methodMarshalText),
 		ptrOnly:       c.ptrOnlyMethods(t),
 	}
-	tc.opaque = c.isOpaqueStructNamed(t)
-	tc.structurallySafe, tc.publicFields = c.isStructurallySafeNamed(t)
-	for _, name := range revealingMethods[qualifiedName(t)] {
+	key := qualifiedName(t)
+	public := c.public[key]
+	tc.opaque = isOpaqueStruct(t.Underlying(), public)
+	tc.structurallySafe, tc.publicFields = c.isStructurallySafeNamed(t, public)
+	for _, name := range revealingMethods[key] {
 		if tc.revealing == nil {
 			tc.revealing = make(map[string]bool)
 		}
@@ -534,21 +543,20 @@ func (m matcher) structural(t types.Type, visited map[types.Type]bool) (safe, pr
 }
 
 // isStructurallySafeNamed is [matcher.isStructurallySafe] for a configured named type,
-// ignoring its top-level public fields (see matcher.public).
+// ignoring its top-level fields named in public (see matcher.public).
 // It also returns the names of the fields which were ignored:
 // a listed name which the struct does not have is not ignored
 // (the library changed), so the type falls back to the plain rule, which is the safe direction.
-func (m matcher) isStructurallySafeNamed(t *types.Named) (bool, []string) {
+func (m matcher) isStructurallySafeNamed(t *types.Named, public []string) (bool, []string) {
 	st, ok := t.Underlying().(*types.Struct)
-	names := m.public[qualifiedName(t)]
-	if !ok || len(names) == 0 {
+	if !ok || len(public) == 0 {
 		return m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)), nil
 	}
 	visited := map[types.Type]bool{t.Underlying(): true}
 	var ignored []string
 	safe, protected := true, false
 	for f := range st.Fields() {
-		if slices.Contains(names, f.Name()) {
+		if slices.Contains(public, f.Name()) {
 			ignored = append(ignored, f.Name())
 			continue
 		}
@@ -558,17 +566,11 @@ func (m matcher) isStructurallySafeNamed(t *types.Named) (bool, []string) {
 	return safe && protected, ignored
 }
 
-// isOpaqueStructNamed is [isOpaqueStruct] for a configured named type,
-// ignoring its top-level public fields (see matcher.public),
-// even if they are exported or embedded.
-// A listed name which the struct does not have is not applied.
-func (m matcher) isOpaqueStructNamed(t *types.Named) bool {
-	return isOpaqueStruct(t.Underlying(), m.public[qualifiedName(t)])
-}
-
 // isOpaqueStruct reports whether reflection-based encoders such as encoding/json
 // write t empty: it is a struct whose fields are all unexported and none is embedded.
-// Fields named in public are skipped.
+// Fields named in public (see matcher.public) are skipped
+// even if they are exported or embedded;
+// a listed name which the struct does not have is not applied.
 func isOpaqueStruct(t types.Type, public []string) bool {
 	st, ok := t.(*types.Struct)
 	if !ok {
@@ -911,7 +913,8 @@ func (c *checker) walkPointer(holder types.Type, p *types.Pointer, st printState
 }
 
 // pointerStep describes the hop through a pointer which fmt holds as holder.
-// A Formatter pointer gets here only where methods are off, so it is not called "non-Formatter".
+// A Formatter pointer gets here only where methods are off,
+// so it is not called "non-Formatter".
 func (c *checker) pointerStep(holder types.Type, p *types.Pointer) walkStep {
 	if named, ok := holder.(*types.Named); ok {
 		return walkStep{

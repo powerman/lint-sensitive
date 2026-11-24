@@ -1030,9 +1030,9 @@ type PromotedFromPtrEmbed struct{ PtrRecv }
 	}
 }
 
-// TestPublicFields verifies that the fields listed in publicFields
-// are ignored by the structural check of that type only.
-func TestPublicFields(t *testing.T) {
+// TestClassifyStructuralPublic verifies that classify ignores the fields listed in publicFields
+// in the structural check of that type only.
+func TestClassifyStructuralPublic(t *testing.T) {
 	t.Parallel()
 
 	pkg := types.NewPackage("example.com/testcamo", "testcamo")
@@ -1062,10 +1062,10 @@ func TestPublicFields(t *testing.T) {
 			t.Parallel()
 
 			c := newChecker(newMatcher(Config{}))
-			gotSafe, gotIgnored := c.isStructurallySafeNamed(tt.typ)
-			if gotSafe != tt.wantSafe || !slices.Equal(gotIgnored, tt.wantIgnored) {
-				t.Errorf("isStructurallySafeNamed() = %v, %v, want %v, %v",
-					gotSafe, gotIgnored, tt.wantSafe, tt.wantIgnored)
+			tc := c.classify(tt.typ)
+			if tc.structurallySafe != tt.wantSafe || !slices.Equal(tc.publicFields, tt.wantIgnored) {
+				t.Errorf("classify() = structurallySafe %v, publicFields %v, want %v, %v",
+					tc.structurallySafe, tc.publicFields, tt.wantSafe, tt.wantIgnored)
 			}
 		})
 	}
@@ -1101,6 +1101,34 @@ func TestIsOpaqueStruct(t *testing.T) {
 			t.Parallel()
 			if got := isOpaqueStruct(tt.typ, nil); got != tt.want {
 				t.Errorf("isOpaqueStruct(%v, nil) = %v, want %v", tt.typ, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseTypeEntry(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		entry    string
+		wantPkg  string
+		wantName string
+		wantOK   bool
+	}{
+		{"a/b.T", "a/b", "T", true},
+		{"gopkg.in/yaml.v3", "", "", false},
+		{"a/b.t", "", "", false},
+		{".T", "", "", false},
+		{"T", "", "", false},
+		{"a/b.1T", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.entry, func(t *testing.T) {
+			t.Parallel()
+			pkg, name, ok := parseTypeEntry(tt.entry)
+			if pkg != tt.wantPkg || name != tt.wantName || ok != tt.wantOK {
+				t.Errorf("parseTypeEntry(%q) = %q, %q, %v, want %q, %q, %v",
+					tt.entry, pkg, name, ok, tt.wantPkg, tt.wantName, tt.wantOK)
 			}
 		})
 	}
@@ -1167,9 +1195,9 @@ func TestNewMatcherPublic(t *testing.T) {
 	}
 }
 
-// TestIsOpaqueStructNamed verifies that public fields are ignored
-// even if they are exported or embedded.
-func TestIsOpaqueStructNamed(t *testing.T) {
+// TestClassifyOpaquePublic verifies that classify ignores public fields
+// in the opaque check even if they are exported or embedded.
+func TestClassifyOpaquePublic(t *testing.T) {
 	t.Parallel()
 
 	pkg := types.NewPackage("example.com/a", "a")
@@ -1194,8 +1222,8 @@ func TestIsOpaqueStructNamed(t *testing.T) {
 			t.Parallel()
 			m := newMatcher(Config{})
 			m.public["example.com/a.T"] = tt.public
-			if got := m.isOpaqueStructNamed(typ); got != tt.want {
-				t.Errorf("isOpaqueStructNamed() = %v, want %v", got, tt.want)
+			if got := newChecker(m).classify(typ).opaque; got != tt.want {
+				t.Errorf("classify().opaque = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -504,7 +504,8 @@ type camoUnexported struct {
 }
 
 // Unlisted keeps its hash field in the check, so it is not structurally protected,
-// but it has no fmt methods either: there is nothing to disable, -sensitive.require-* reports it.
+// but it has no fmt methods either:
+// there is nothing to disable, -sensitive.require-* reports it.
 type camoUnlistedUnexported struct {
 	x fakecamo.Unlisted
 }
