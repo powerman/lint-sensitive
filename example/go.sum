@@ -27,6 +27,8 @@ github.com/powerman/check v1.14.1 h1:Z3yarbmVJm2ZcF0lKnSka7Vxgu6KeGRkLEPikync/+w
 github.com/powerman/check v1.14.1/go.mod h1:SLUFjRHJRso/wokJgRvySca9reNPpC0YG1SvE0sifA0=
 github.com/powerman/sensitive v0.7.0 h1:X0DNXJ/CdQnqMr0HQVpN0S490itwEJPwc+IiPjw94TM=
 github.com/powerman/sensitive v0.7.0/go.mod h1:YmLobGS5KUHAitkmfkjESQbT7DKjF//EQnpTL6qKHAo=
+github.com/rbranson/camo v0.0.0-20240514174437-9bd57a49cfe2 h1:f+IMOYtQUDTbXEwYE9GgTH7tA61NFzi5JvOKeqVhQ7E=
+github.com/rbranson/camo v0.0.0-20240514174437-9bd57a49cfe2/go.mod h1:dsC8ANkMyXyoesSXwfcBGj733u5gFnRVk4RsRI9EjFM=
 github.com/rs/zerolog v1.29.1 h1:cO+d60CHkknCbvzEWxP0S9K6KqyTjrCNUy1LdQLCGPc=
 github.com/rs/zerolog v1.29.1/go.mod h1:Le6ESbR7hc+DP6Lt1THiV8CQSdkkNrd3R0XbEgp3ZBU=
 github.com/rsjethani/secret/v2 v2.3.1 h1:i4uGXDmEswNB95IFO7Yi4AJ75BrFu830Q4A1z5bdtPY=

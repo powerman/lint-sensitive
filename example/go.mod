@@ -7,6 +7,7 @@ require (
 	github.com/go-playground/sensitive v0.0.1
 	github.com/negrel/secrecy v0.7.0
 	github.com/powerman/sensitive v0.7.0
+	github.com/rbranson/camo v0.0.0-20240514174437-9bd57a49cfe2
 	github.com/rsjethani/secret/v2 v2.3.1
 	github.com/shoenig/go-conceal v0.5.7
 )

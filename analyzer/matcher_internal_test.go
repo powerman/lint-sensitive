@@ -35,6 +35,7 @@ var (
 		{Pkg: "github.com/rsjethani/secret/v2", Name: "Text"},
 		{Pkg: "github.com/shoenig/go-conceal", Name: "Text"},
 		{Pkg: "github.com/shoenig/go-conceal", Name: "Bytes"},
+		{Pkg: "github.com/rbranson/camo", Name: "Secret"},
 	}
 )
 

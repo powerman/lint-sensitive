@@ -6,7 +6,8 @@
 // By default, sensitive types are those defined in github.com/powerman/sensitive,
 // github.com/go-playground/sensitive, github.com/negrel/secrecy.Secret,
 // github.com/angusgmorrison/logfusc.Secret, github.com/rsjethani/secret/v2.Text,
-// and github.com/shoenig/go-conceal.Text and .Bytes.
+// github.com/shoenig/go-conceal.Text and .Bytes,
+// and github.com/rbranson/camo.Secret.
 package analyzer
 
 import (
@@ -23,6 +24,7 @@ var defaultTypes = []string{ // Const.
 	"github.com/rsjethani/secret/v2.Text",
 	"github.com/shoenig/go-conceal.Text",
 	"github.com/shoenig/go-conceal.Bytes",
+	"github.com/rbranson/camo.Secret",
 }
 
 // revealingMethods lists methods of known types which match a fmt/encoding interface

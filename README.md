@@ -149,7 +149,7 @@ println(s) // s3cr3t — Stringer/Formatter is never consulted
 
 ### Every supported library, both channels
 
-By default the linter recognises six sensitive-value libraries (see below).
+By default the linter recognises seven sensitive-value libraries (see below).
 The [`example/`](example/) directory is a self-contained module with a runnable
 program that uses every one of them:
 unprotected values leak through `fmt` reflection or builtin `print`,
@@ -215,7 +215,8 @@ By default, types from several sensitive-value libraries are recognized:
 `github.com/powerman/sensitive`, `github.com/go-playground/sensitive`,
 `github.com/negrel/secrecy.Secret`, `github.com/angusgmorrison/logfusc.Secret`,
 `github.com/rsjethani/secret/v2.Text`,
-and `github.com/shoenig/go-conceal.Text` and `.Bytes`.
+`github.com/shoenig/go-conceal.Text` and `.Bytes`,
+and `github.com/rbranson/camo.Secret`.
 If you use other libraries or project-specific types, extend via the `-sensitive.types` flag:
 
 ```bash
@@ -339,6 +340,7 @@ whose parts are all protected in turn, but never a pointer to them.
 A single unprotected field (`int`, `string`, `any`, a pointer to a struct, etc.)
 makes the whole type unprotected,
 because `fmt` prints that field as is.
+For a few known types the linter ignores fields known not to hold the secret.
 
 ### Existing library support
 
@@ -356,13 +358,15 @@ each type in the existing libraries provides (as of 2026-11-24).
 | `shoenig/go-conceal.Bytes`⁵         | ✗    | ✗    | ✗   | ✓     | ✓         | ✗          |
 | `negrel/secrecy.Secret[T]`          | ✓¹   | ✓    | ✗   | ✓     | ✓         | ✗          |
 | `angusgmorrison/logfusc.Secret[T]`  | ✓    | ✗    | ✗   | ✓     | ✓         | ✗          |
+| `rbranson/camo.Secret[T]`           | ✗    | ✗    | ✓   | ✓     | ✓         | ✓⁶         |
 
 ¹ — via `encoding.TextMarshaler`.<br/>
 ² — `**T` — double pointer, `fmt` never dereferences it.<br/>
 ³ — `*<primitive>` — pointer to a primitive type, `fmt` prints it as an address.<br/>
 ⁴ — `func() T` closures, `fmt` never dereferences.<br/>
 ⁵ — the library hands out `*Text` and `*Bytes`, so the methods are counted on the pointer;
-`(*Text).MarshalText` outputs the secret, so it is not counted.
+`(*Text).MarshalText` outputs the secret, so it is not counted.<br/>
+⁶ — `unsafe.Pointer`; the `hash` field is a fingerprint the linter knows to ignore.
 
 ### Flags
 
