@@ -138,3 +138,9 @@ func (NotComparable) GoString() string { return "[redacted]" }
 type FormatFuncWrap struct{ fn FuncT }
 
 func (FormatFuncWrap) Format(f fmt.State, verb rune) { fmt.Fprint(f, "[redacted]") }
+
+// NewPtrRecv returns a *PtrRecv.
+func NewPtrRecv() *PtrRecv { return new(PtrRecv) }
+
+// ValuePtrRecv returns a PtrRecv value.
+func ValuePtrRecv() PtrRecv { return "" }

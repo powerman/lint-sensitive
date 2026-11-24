@@ -78,3 +78,39 @@ func TestRequireFormatGeneric(t *testing.T) {
 	types := append(slices.Clone(reliabilityTypes), "reliability_generic.Wrap")
 	runNew(t, analyzer.Config{Types: types, RequireFormat: true}, "sensitivefields", "reliability_generic")
 }
+
+// requireAll is a config with every reliability requirement enabled.
+func requireAll() analyzer.Config {
+	return analyzer.Config{
+		Types:              reliabilityTypes,
+		RequireMarshalJSON: true,
+		RequireMarshalText: true,
+		RequireFormat:      true,
+		RequireGoString:    true,
+		RequireString:      true,
+	}
+}
+
+// TestRequirePointerForm verifies that a type used only as *T
+// is checked by the method set of *T.
+func TestRequirePointerForm(t *testing.T) {
+	t.Parallel()
+
+	runNew(t, requireAll(), "sensitivefields", "reliability_ptr")
+}
+
+// TestRequirePointerFormMixed verifies that a value form of a type
+// makes it checked by the method set of T.
+func TestRequirePointerFormMixed(t *testing.T) {
+	t.Parallel()
+
+	runNew(t, requireAll(), "sensitivefields", "reliability_ptr_mixed")
+}
+
+// TestRequireValueExpr verifies that a type which is never named
+// is still checked when the code uses a value of it.
+func TestRequireValueExpr(t *testing.T) {
+	t.Parallel()
+
+	runNew(t, requireAll(), "sensitivefields", "reliability_value_expr")
+}

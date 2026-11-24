@@ -98,10 +98,26 @@ func TestLevelCheck(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			got := levelCheck(tt.cls)
+			got := levelCheck(tt.cls, false)
 			if got != tt.want {
 				t.Errorf("levelCheck(%+v) =\n  %+v\nwant:\n  %+v", tt.cls, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestLevelCheckViaPointer verifies that methods which only *T has count
+// for a type used only as *T, and do not count for a T value.
+func TestLevelCheckViaPointer(t *testing.T) {
+	t.Parallel()
+
+	cls := typeClass{ptrOnly: map[string]bool{methodString: true, methodMarshalText: true}}
+
+	if got := levelCheck(cls, false); got != (requires{}) {
+		t.Errorf("levelCheck(%+v, false) = %+v, want nothing satisfied", cls, got)
+	}
+	want := requires{marshalJSONSafe: true, marshalTextSafe: true, stringSafe: true}
+	if got := levelCheck(cls, true); got != want {
+		t.Errorf("levelCheck(%+v, true) = %+v, want %+v", cls, got, want)
 	}
 }
