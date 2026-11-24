@@ -261,6 +261,7 @@ func (c *checker) emitLevelDiagnostics(
 		if !use.viaPointer {
 			msg += ptrOnlyHint(cls.ptrOnly, d.methods)
 		}
+		msg += revealingHint(cls.revealing, d.methods)
 		key := levelReport{origin: named.Origin().Obj(), msg: msg}
 		if reported[key] {
 			continue
@@ -332,4 +333,20 @@ func ptrOnlyHint(ptrOnly map[string]bool, methods []string) string {
 	}
 	return " (declared only on a pointer receiver, so not called for a T value: " +
 		strings.Join(found, ", ") + ")"
+}
+
+// revealingHint explains why a type with a suitable method is still reported:
+// the method outputs the secret.
+// It returns an empty string when none of the methods is revealing.
+func revealingHint(revealing map[string]bool, methods []string) string {
+	var found []string
+	for _, name := range methods {
+		if revealing[name] {
+			found = append(found, name)
+		}
+	}
+	if len(found) == 0 {
+		return ""
+	}
+	return " (" + strings.Join(found, ", ") + " outputs the secret)"
 }

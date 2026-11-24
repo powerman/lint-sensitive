@@ -22,6 +22,13 @@ var defaultTypes = []string{ // Const.
 	"github.com/rsjethani/secret/v2.Text",
 }
 
+// revealingMethods lists methods of known types which match a fmt/encoding interface
+// by signature but output the secret, so they do not count as protection.
+// They apply to a matched type whether it comes from defaultTypes or not.
+var revealingMethods = map[string][]string{ // Const.
+	"github.com/shoenig/go-conceal.Text": {methodMarshalText},
+}
+
 // matcherFunc is the type of functions that retrieve a matcher from an analysis pass.
 // It abstracts over the two ways to obtain a matcher:
 // from New() (always returns the same pre-built matcher)

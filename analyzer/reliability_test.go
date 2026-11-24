@@ -114,3 +114,11 @@ func TestRequireValueExpr(t *testing.T) {
 
 	runNew(t, requireAll(), "sensitivefields", "reliability_value_expr")
 }
+
+// TestRequireRevealingMethod verifies that a method which outputs the secret
+// does not count as protection, and that a type used only as *T is checked by the method set of *T.
+func TestRequireRevealingMethod(t *testing.T) {
+	t.Parallel()
+
+	runNew(t, requireAll(), "sensitivefields", "reliability_conceal")
+}

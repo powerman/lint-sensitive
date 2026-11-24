@@ -6,6 +6,8 @@ import (
 	"go/token"
 	"go/types"
 	"log"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 
@@ -54,6 +56,10 @@ type typeClass struct {
 	// ptrOnly holds names of the methods above which only *t has,
 	// so they are not called on a t value and do not count as implemented.
 	ptrOnly map[string]bool
+
+	// revealing holds names of the methods which match an interface by signature
+	// but output the secret (see revealingMethods), so they are treated as absent.
+	revealing map[string]bool
 }
 
 // debugPrinted holds the debug lines already printed.
@@ -334,6 +340,26 @@ func (c *checker) classify(t *types.Named) *typeClass {
 		ptrOnly:          c.ptrOnlyMethods(t),
 		structurallySafe: c.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)),
 	}
+	for _, name := range revealingMethods[qualifiedName(t)] {
+		if tc.revealing == nil {
+			tc.revealing = make(map[string]bool)
+		}
+		tc.revealing[name] = true
+		delete(tc.ptrOnly, name)
+		switch name {
+		case methodFormat:
+			tc.fmtFormatter = false
+		case methodString:
+			tc.fmtStringer = false
+		case methodGoString:
+			tc.fmtGoStringer = false
+		case methodMarshalJSON:
+			tc.jsonMarshaler = false
+		case methodMarshalText:
+			tc.textMarshaler = false
+		}
+	}
+
 	c.classes.Set(t, tc)
 
 	if c.debug {
@@ -462,6 +488,9 @@ func debugClassify(t *types.Named, tc *typeClass) {
 		t,
 		tc.fmtFormatter, tc.fmtStringer, tc.fmtGoStringer,
 		tc.jsonMarshaler, tc.textMarshaler, tc.structurallySafe)
+	if len(tc.revealing) > 0 {
+		line += fmt.Sprintf(" revealing=%v", slices.Sorted(maps.Keys(tc.revealing)))
+	}
 	if _, loaded := debugPrinted.LoadOrStore(line, struct{}{}); !loaded {
 		log.Print(line)
 	}
