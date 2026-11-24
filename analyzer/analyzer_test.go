@@ -126,3 +126,40 @@ func TestFieldsRelatedInformation(t *testing.T) {
 		}
 	}
 }
+
+// TestPublicFieldsConfig verifies that a field declared public
+// does not break the structural protection and the opacity of its type.
+func TestPublicFieldsConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := analyzer.Config{
+		Types:              reliabilityTypes,
+		RequireMarshalJSON: true,
+		RequireMarshalText: true,
+	}
+	t.Run("not declared", func(t *testing.T) {
+		t.Parallel()
+		runNew(t, cfg, "sensitivefields", "public_off")
+	})
+	t.Run("declared", func(t *testing.T) {
+		t.Parallel()
+		cfg := cfg
+		cfg.PublicFields = []string{"fakesensitive.Credential.ID"}
+		runNew(t, cfg, "sensitivefields", "public_on")
+	})
+}
+
+// TestInvalidPublicFields verifies that a malformed entry makes every analyzer fail.
+func TestInvalidPublicFields(t *testing.T) {
+	t.Parallel()
+
+	for _, a := range analyzer.New(analyzer.Config{PublicFields: []string{"fakesensitive.Credential"}}) {
+		t.Run(a.Name, func(t *testing.T) {
+			t.Parallel()
+			_, err := a.Run(&analysis.Pass{})
+			if err == nil || !strings.Contains(err.Error(), `invalid -sensitive.public entry "fakesensitive.Credential"`) {
+				t.Errorf("Run() error = %v, want invalid -sensitive.public entry", err)
+			}
+		})
+	}
+}

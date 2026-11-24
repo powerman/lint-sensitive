@@ -2,6 +2,8 @@ package analyzer
 
 import (
 	"flag"
+	"slices"
+	"strings"
 	"testing"
 )
 
@@ -18,6 +20,9 @@ func TestRunFlag(t *testing.T) { //nolint:paralleltest // Mutates the shared Fla
 	}{
 		{"types", "example.com/a.T, example.com/b", func(m matcher) bool {
 			return m.types[packageType{Pkg: "example.com/a", Name: "T"}] && m.packages["example.com/b"]
+		}},
+		{"public", "example.com/a.T.F, example.com/a.T.G", func(m matcher) bool {
+			return m.err == nil && slices.Equal(m.public["example.com/a.T"], []string{"F", "G"})
 		}},
 		{"no-default-types", "true", func(m matcher) bool {
 			return !m.packages["github.com/powerman/sensitive"]
@@ -62,4 +67,17 @@ func TestRunFlag(t *testing.T) { //nolint:paralleltest // Mutates the shared Fla
 			t.Errorf("flag %q is not covered by TestRunFlag", f.Name)
 		}
 	})
+}
+
+// TestRunFlagInvalidPublic verifies that a malformed -sensitive.public entry is an error.
+func TestRunFlagInvalidPublic(t *testing.T) { //nolint:paralleltest // Mutates the shared FlagAnalyzer.Flags.
+	t.Cleanup(func() { _ = FlagAnalyzer.Flags.Set("public", "") })
+	err := FlagAnalyzer.Flags.Set("public", "example.com/a.T")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = runFlag(nil)
+	if err == nil || !strings.Contains(err.Error(), `invalid -sensitive.public entry "example.com/a.T"`) {
+		t.Errorf("runFlag() error = %v, want invalid -sensitive.public entry", err)
+	}
 }

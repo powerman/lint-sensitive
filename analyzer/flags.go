@@ -37,12 +37,14 @@ var PrintAnalyzer = newPrintAnalyzer(
 
 // Flags are bound to the fields of flagConfig at registration,
 // so a typo in a flag name cannot silently disconnect a flag from its Config field.
-// Types is the exception: it is a comma-separated string which runFlag splits.
+// Types and PublicFields are the exception:
+// they are comma-separated strings which runFlag splits.
 //
 //nolint:gochecknoglobals // Registered in init(), read in runFlag.
 var (
 	flagConfig Config
 	flagTypes  string
+	flagPublic string
 )
 
 func init() { //nolint:gochecknoinits // Required for flag registration.
@@ -50,6 +52,9 @@ func init() { //nolint:gochecknoinits // Required for flag registration.
 	fs.StringVar(&flagTypes, "types", "",
 		"Comma-separated list of sensitive type package import paths "+
 			"(optionally with .TypeName suffix to restrict to a specific type)")
+	fs.StringVar(&flagPublic, "public", "",
+		"Comma-separated list of fields of sensitive types which never hold the secret "+
+			"(import/path.TypeName.FieldName)")
 	fs.BoolVar(&flagConfig.NoDefaultTypes, "no-default-types", false,
 		"Do not seed the built-in default sensitive type list")
 	fs.BoolVar(&flagConfig.SkipTests, "skip-tests", false,
@@ -72,14 +77,19 @@ func init() { //nolint:gochecknoinits // Required for flag registration.
 		"Print sensitive type classification to stderr")
 }
 
-func matcherFromFlag(pass *analysis.Pass) matcher {
-	return pass.ResultOf[FlagAnalyzer].(matcher)
+func matcherFromFlag(pass *analysis.Pass) (matcher, error) {
+	return pass.ResultOf[FlagAnalyzer].(matcher), nil
 }
 
 func runFlag(*analysis.Pass) (any, error) {
 	cfg := flagConfig
 	cfg.Types = splitCSV(flagTypes)
-	return newMatcher(cfg), nil
+	cfg.PublicFields = splitCSV(flagPublic)
+	m := newMatcher(cfg)
+	if m.err != nil {
+		return nil, m.err
+	}
+	return m, nil
 }
 
 // splitCSV splits a comma-separated string, trims whitespace from each element,

@@ -1,6 +1,7 @@
 package analyzer
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -21,6 +22,13 @@ type matcher struct {
 	skipTests     bool
 	skipGenerated bool
 	debug         bool
+
+	// public maps a qualifiedName of a type to the names of its fields
+	// which never hold the secret: the built-in publicFields plus Config.PublicFields.
+	public map[string][]string
+
+	// err is the first error found in Config, reported by every analyzer run.
+	err error
 
 	requireMarshalJSON bool
 	requireMarshalText bool
@@ -52,10 +60,10 @@ type typeClass struct {
 	jsonMarshaler    bool // t implements json.Marshaler
 	textMarshaler    bool // t implements encoding.TextMarshaler
 	structurallySafe bool
-	opaque           bool // t is a struct whose fields are all unexported and not embedded
+	opaque           bool // t is a struct whose non-public fields are all unexported and not embedded
 
-	// publicFields holds names of the fields skipped by the structural check
-	// as known not to hold the secret (see publicFields).
+	// publicFields holds names of the fields skipped by the structural and opaque checks
+	// as known not to hold the secret (see matcher.public).
 	publicFields []string
 
 	// ptrOnly holds names of the methods above which only *t has,
@@ -104,6 +112,7 @@ func newMatcher(cfg Config) matcher {
 		skipTests:     cfg.SkipTests,
 		skipGenerated: cfg.SkipGenerated,
 		debug:         cfg.Debug,
+		public:        make(map[string][]string, len(publicFields)+len(cfg.PublicFields)),
 
 		requireMarshalJSON: cfg.RequireMarshalJSON,
 		requireMarshalText: cfg.RequireMarshalText,
@@ -119,7 +128,34 @@ func newMatcher(cfg Config) matcher {
 	for _, e := range cfg.Types {
 		m.addEntry(e)
 	}
+	for k, names := range publicFields {
+		m.public[k] = slices.Clone(names)
+	}
+	for _, e := range cfg.PublicFields {
+		key, field, err := parsePublicField(e)
+		if err != nil {
+			m.err = fmt.Errorf("invalid -sensitive.public entry %q: %w", e, err)
+			break
+		}
+		m.public[key] = append(m.public[key], field)
+	}
 	return m
+}
+
+var errBadPublicField = errors.New("want import/path.TypeName.FieldName with an exported TypeName")
+
+// parsePublicField splits "import/path.TypeName.FieldName"
+// into the key of the type (as returned by qualifiedName) and the field name.
+func parsePublicField(entry string) (typeKey, field string, err error) {
+	typeKey, field, ok := strings.CutLast(entry, ".")
+	if !ok || !token.IsIdentifier(field) {
+		return "", "", errBadPublicField
+	}
+	pkg, typ, ok := strings.CutLast(typeKey, ".")
+	if !ok || pkg == "" || !token.IsIdentifier(typ) || !token.IsExported(typ) {
+		return "", "", errBadPublicField
+	}
+	return typeKey, field, nil
 }
 
 // addEntry adds one entry to the matcher.
@@ -345,8 +381,8 @@ func (c *checker) classify(t *types.Named) *typeClass {
 		jsonMarshaler: c.hasMethod(t, methodMarshalJSON),
 		textMarshaler: c.hasMethod(t, methodMarshalText),
 		ptrOnly:       c.ptrOnlyMethods(t),
-		opaque:        isOpaqueStruct(t.Underlying()),
 	}
+	tc.opaque = c.isOpaqueStructNamed(t)
 	tc.structurallySafe, tc.publicFields = c.isStructurallySafeNamed(t)
 	for _, name := range revealingMethods[qualifiedName(t)] {
 		if tc.revealing == nil {
@@ -498,13 +534,13 @@ func (m matcher) structural(t types.Type, visited map[types.Type]bool) (safe, pr
 }
 
 // isStructurallySafeNamed is [matcher.isStructurallySafe] for a configured named type,
-// ignoring its top-level fields listed in publicFields.
+// ignoring its top-level public fields (see matcher.public).
 // It also returns the names of the fields which were ignored:
 // a listed name which the struct does not have is not ignored
 // (the library changed), so the type falls back to the plain rule, which is the safe direction.
 func (m matcher) isStructurallySafeNamed(t *types.Named) (bool, []string) {
 	st, ok := t.Underlying().(*types.Struct)
-	names := publicFields[qualifiedName(t)]
+	names := m.public[qualifiedName(t)]
 	if !ok || len(names) == 0 {
 		return m.isStructurallySafe(t.Underlying(), make(map[types.Type]bool)), nil
 	}
@@ -522,14 +558,26 @@ func (m matcher) isStructurallySafeNamed(t *types.Named) (bool, []string) {
 	return safe && protected, ignored
 }
 
+// isOpaqueStructNamed is [isOpaqueStruct] for a configured named type,
+// ignoring its top-level public fields (see matcher.public),
+// even if they are exported or embedded.
+// A listed name which the struct does not have is not applied.
+func (m matcher) isOpaqueStructNamed(t *types.Named) bool {
+	return isOpaqueStruct(t.Underlying(), m.public[qualifiedName(t)])
+}
+
 // isOpaqueStruct reports whether reflection-based encoders such as encoding/json
 // write t empty: it is a struct whose fields are all unexported and none is embedded.
-func isOpaqueStruct(t types.Type) bool {
+// Fields named in public are skipped.
+func isOpaqueStruct(t types.Type, public []string) bool {
 	st, ok := t.(*types.Struct)
 	if !ok {
 		return false
 	}
 	for f := range st.Fields() {
+		if slices.Contains(public, f.Name()) {
+			continue
+		}
 		if f.Exported() || f.Embedded() {
 			return false
 		}

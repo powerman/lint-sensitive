@@ -16,7 +16,11 @@ func newPrintAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis.
 		Doc:      "detect builtin print/println calls with basic-kind sensitive arguments",
 		Requires: requires,
 		Run: func(pass *analysis.Pass) (any, error) {
-			return runPrint(pass, get(pass))
+			m, err := get(pass)
+			if err != nil {
+				return nil, err
+			}
+			return runPrint(pass, m)
 		},
 	}
 }

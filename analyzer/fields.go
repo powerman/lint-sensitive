@@ -19,7 +19,11 @@ func newFieldsAnalyzer(requires []*analysis.Analyzer, get matcherFunc) *analysis
 		Doc:      "detect struct fields through which fmt can print the content of a sensitive value",
 		Requires: requires,
 		Run: func(pass *analysis.Pass) (any, error) {
-			return runFields(pass, get(pass))
+			m, err := get(pass)
+			if err != nil {
+				return nil, err
+			}
+			return runFields(pass, m)
 		},
 	}
 }

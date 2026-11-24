@@ -47,7 +47,8 @@ var publicFields = map[string][]string{ // Const.
 // It abstracts over the two ways to obtain a matcher:
 // from New() (always returns the same pre-built matcher)
 // and from FlagAnalyzer (reads the matcher from pass.ResultOf).
-type matcherFunc func(*analysis.Pass) matcher
+// The error reports an invalid Config.
+type matcherFunc func(*analysis.Pass) (matcher, error)
 
 // Config controls which packages' named types are considered sensitive.
 type Config struct {
@@ -59,6 +60,13 @@ type Config struct {
 	// NoDefaultTypes, when true, omits the built-in default types list
 	// so that only Types are considered sensitive.
 	NoDefaultTypes bool
+
+	// PublicFields lists fields of configured types which never hold the secret,
+	// as "import/path.TypeName.FieldName".
+	// They are ignored when deciding whether the type is structurally protected
+	// or an opaque struct, like the built-in entries for known types.
+	// A malformed entry makes every analyzer fail with an error.
+	PublicFields []string
 
 	// SkipTests, when true, suppresses diagnostics in _test.go files.
 	SkipTests bool
@@ -102,7 +110,7 @@ type Config struct {
 func New(cfg Config) []*analysis.Analyzer {
 	m := newMatcher(cfg)
 	req := []*analysis.Analyzer{inspect.Analyzer}
-	get := func(*analysis.Pass) matcher { return m }
+	get := func(*analysis.Pass) (matcher, error) { return m, m.err }
 	return []*analysis.Analyzer{
 		newFieldsAnalyzer(req, get),
 		newPrintAnalyzer(req, get),

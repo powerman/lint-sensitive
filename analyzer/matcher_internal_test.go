@@ -1099,8 +1099,103 @@ func TestIsOpaqueStruct(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if got := isOpaqueStruct(tt.typ); got != tt.want {
-				t.Errorf("isOpaqueStruct(%v) = %v, want %v", tt.typ, got, tt.want)
+			if got := isOpaqueStruct(tt.typ, nil); got != tt.want {
+				t.Errorf("isOpaqueStruct(%v, nil) = %v, want %v", tt.typ, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParsePublicField(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		entry     string
+		wantType  string
+		wantField string
+		wantErr   bool
+	}{
+		{"a/b.T.F", "a/b.T", "F", false},
+		{"a/b.T.f", "a/b.T", "f", false},
+		{"gopkg.in/yaml.v3.Node.Value", "gopkg.in/yaml.v3.Node", "Value", false},
+		{"a/b.T", "", "", true},
+		{"T.F", "", "", true},
+		{".T.F", "", "", true},
+		{"a/b.t.F", "", "", true},
+		{"a/b.T.", "", "", true},
+		{"a/b.T.1", "", "", true},
+		{"a/b", "", "", true},
+		{"", "", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.entry, func(t *testing.T) {
+			t.Parallel()
+			typ, field, err := parsePublicField(tt.entry)
+			if (err != nil) != tt.wantErr || typ != tt.wantType || field != tt.wantField {
+				t.Errorf("parsePublicField(%q) = %q, %q, %v, want %q, %q, error=%v",
+					tt.entry, typ, field, err, tt.wantType, tt.wantField, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestNewMatcherPublic verifies that user entries are merged with the built-in ones
+// and do not modify the built-in table.
+func TestNewMatcherPublic(t *testing.T) {
+	t.Parallel()
+
+	m := newMatcher(Config{
+		NoDefaultTypes: true,
+		PublicFields:   []string{"a/b.T.F", "a/b.T.G", "github.com/rbranson/camo.Secret.extra"},
+	})
+	if m.err != nil {
+		t.Fatal(m.err)
+	}
+	if got := m.public["a/b.T"]; !slices.Equal(got, []string{"F", "G"}) {
+		t.Errorf("public[a/b.T] = %v, want [F G]", got)
+	}
+	if got := m.public["github.com/rbranson/camo.Secret"]; !slices.Equal(got, []string{"hash", "extra"}) {
+		t.Errorf("public[camo.Secret] = %v, want [hash extra]", got)
+	}
+	if got := publicFields["github.com/rbranson/camo.Secret"]; !slices.Equal(got, []string{"hash"}) {
+		t.Errorf("built-in table was modified: %v", got)
+	}
+
+	m = newMatcher(Config{PublicFields: []string{"a/b.T.F", "a/b.T"}})
+	if m.err == nil {
+		t.Error("malformed entry: err = nil, want error")
+	}
+}
+
+// TestIsOpaqueStructNamed verifies that public fields are ignored
+// even if they are exported or embedded.
+func TestIsOpaqueStructNamed(t *testing.T) {
+	t.Parallel()
+
+	pkg := types.NewPackage("example.com/a", "a")
+	str := types.Typ[types.String]
+	typ := types.NewNamed(types.NewTypeName(token.NoPos, pkg, "T", nil),
+		types.NewStruct([]*types.Var{
+			types.NewField(token.NoPos, pkg, "ID", str, false),
+			types.NewField(token.NoPos, pkg, "value", str, false),
+		}, nil), nil)
+
+	tests := []struct {
+		name   string
+		public []string
+		want   bool
+	}{
+		{"not declared", nil, false},
+		{"declared", []string{"ID"}, true},
+		{"declared field missing", []string{"Name"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			m := newMatcher(Config{})
+			m.public["example.com/a.T"] = tt.public
+			if got := m.isOpaqueStructNamed(typ); got != tt.want {
+				t.Errorf("isOpaqueStructNamed() = %v, want %v", got, tt.want)
 			}
 		})
 	}

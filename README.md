@@ -241,6 +241,20 @@ To disable the built-in default type list, add `-sensitive.no-default-types`:
 lint-sensitive -sensitive.no-default-types -sensitive.types=my/custom.Type ./...
 ```
 
+A configured type may have a field which never holds the secret,
+e.g. an ID next to a structurally protected secret.
+Declare it as `import/path.TypeName.FieldName` with `-sensitive.public`
+(comma-separated, only for types matched by `-sensitive.types`):
+
+```bash
+lint-sensitive -sensitive.public=example.com/app.Credential.ID ./...
+```
+
+Such a field is ignored when the linter decides
+whether the type is structurally protected or an opaque struct.
+This states a fact about the type and does not suppress findings:
+a wrongly declared field hides real leaks of that type.
+
 Some files produce findings that cannot or should not be fixed:
 
 - **Test files** (`_test.go`) often hold fake fixtures that aren't real secrets.
@@ -270,7 +284,8 @@ package main
 import "github.com/powerman/lint-sensitive/analyzer"
 
 analyzers := analyzer.New(analyzer.Config{
-    Types: []string{"my/project.Internal"},
+    Types:        []string{"my/project.Internal"},
+    PublicFields: []string{"my/project.Internal.ID"},
 })
 ```
 
@@ -332,6 +347,7 @@ The `log/slog` TextHandler calls `encoding.TextMarshaler` and otherwise falls ba
 so for an opaque struct the text marshal rule also requires one of the `%v`/`%s` safeguards.
 Struct tags (`json:"-"`) are not considered:
 an exported field makes the struct not opaque.
+Public fields (built-in for known types or declared with `-sensitive.public`) are ignored.
 
 A "structurally-protected field" means one of:
 `**T`, `*interface{}`, `chan T`, `func() T`, `unsafe.Pointer`,
@@ -349,7 +365,7 @@ whose parts are all protected in turn, but never a pointer to them.
 A single unprotected field (`int`, `string`, `any`, a pointer to a struct, etc.)
 makes the whole type unprotected,
 because `fmt` prints that field as is.
-For a few known types the linter ignores fields known not to hold the secret.
+Public fields (built-in for known types or declared with `-sensitive.public`) are ignored.
 
 A method known to output the secret makes every surface it serves unsafe,
 whatever other safeguards the type has.

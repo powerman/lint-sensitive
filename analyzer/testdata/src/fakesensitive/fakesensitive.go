@@ -181,3 +181,12 @@ func NewPtrRecv() *PtrRecv { return new(PtrRecv) }
 
 // ValuePtrRecv returns a PtrRecv value.
 func ValuePtrRecv() PtrRecv { return "" }
+
+// Credential has a public ID next to a structurally protected secret.
+// The linter cannot tell that ID is public without -sensitive.public.
+type Credential struct {
+	ID     string
+	secret **string
+}
+
+func (c Credential) String() string { return "Credential{" + c.ID + " ***}" }
